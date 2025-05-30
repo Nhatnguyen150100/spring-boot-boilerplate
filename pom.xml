@@ -9,11 +9,11 @@
     <version>3.5.0</version>
     <relativePath /> <!-- lookup parent from repository -->
   </parent>
-  <groupId>com.example</groupId>
-  <artifactId>demo</artifactId>
+  <groupId>com.spring</groupId>
+  <artifactId>springapp</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>demo</name>
-  <description>Demo project for Spring Boot</description>
+  <name>springapp</name>
+  <description>SpringApp - A modern Spring Boot application</description>
   <url />
   <licenses>
     <license />

@@ -1,6 +1,6 @@
 services:
-  demo:
-    image: demo
+  app:
+    image: app
     build:
       context: .
       dockerfile: ./Dockerfile
