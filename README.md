@@ -50,8 +50,8 @@ graph TD
 ### 1️⃣ Clone & Build
 
 ```bash
-git clone https://github.com/your-org/springapp.git
-cd springapp
+git clone https://github.com/Nhatnguyen150100/base-spring.git
+cd base-spring
 ```
 
 Configure database in `src/main/resources/application.properties`.
