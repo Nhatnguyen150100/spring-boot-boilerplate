@@ -1,0 +1,11 @@
+services:
+  demo:
+    image: demo
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    environment:
+      JAVA_OPTS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005,quiet=y
+    ports:
+      - 8000:8000
+      - 5005:5005

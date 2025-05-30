@@ -1,0 +1,50 @@
+<configuration scan="true" scanPeriod="30 seconds">
+
+  <property name="LOG_PATH" value="logs" />
+  <property name="LOG_FILE" value="${LOG_PATH}/application.log" />
+  <property name="LOG_FILE_ERROR" value="${LOG_PATH}/error.log" />
+
+  <!-- Console Appender -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>
+        [%cyan(%d{yyyy-MM-dd HH:mm:ss})] %highlight(%-5level) [%cyan(%thread)] %green(%logger{36}) - %msg%n
+      </pattern>
+    </encoder>
+  </appender>
+
+  <!-- Rolling File Appender (all logs) -->
+  <appender name="FILE_ALL" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>${LOG_FILE}</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <fileNamePattern>${LOG_PATH}/application.%d{yyyy-MM-dd}.log</fileNamePattern>
+      <maxHistory>30</maxHistory>
+    </rollingPolicy>
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Error log to separate file -->
+  <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>${LOG_FILE_ERROR}</file>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>ERROR</level>
+    </filter>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+      <fileNamePattern>${LOG_PATH}/error.%d{yyyy-MM-dd}.log</fileNamePattern>
+      <maxHistory>30</maxHistory>
+    </rollingPolicy>
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- Root logger -->
+  <root level="INFO">
+    <appender-ref ref="CONSOLE" />
+    <appender-ref ref="FILE_ALL" />
+    <appender-ref ref="FILE_ERROR" />
+  </root>
+
+</configuration>

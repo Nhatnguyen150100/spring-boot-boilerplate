@@ -1,0 +1,21 @@
+package com.example.demo.modules.auth.dto.response;
+
+import java.util.UUID;
+
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class UserResponseDto {
+  UUID id;
+  String email;
+  String fullName;
+  String phone;
+  String avatarUrl;
+  Boolean locked;
+  String role;
+}
