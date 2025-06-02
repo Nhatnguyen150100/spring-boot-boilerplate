@@ -5,10 +5,6 @@ import com.spring.app.enums.ERole;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Size;
 import lombok.*;
 import org.springframework.security.core.*;
 import org.springframework.security.core.userdetails.UserDetails;

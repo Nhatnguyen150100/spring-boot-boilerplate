@@ -13,6 +13,7 @@ import com.spring.app.modules.auth.entities.User;
 
 @Component
 public class ApplicationAuditAware implements AuditorAware<UUID> {
+  @SuppressWarnings("null")
   @Override
   public Optional<UUID> getCurrentAuditor() {
     Authentication authentication = SecurityContextHolder

@@ -84,6 +84,19 @@
       <version>1.6.3</version>
     </dependency>
 
+    <!-- https://mvnrepository.com/artifact/org.flywaydb/flyway-core -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+
+    <!-- https://mvnrepository.com/artifact/org.flywaydb/flyway-mysql -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+      <version>11.8.2</version>
+    </dependency>
+
     <!-- https://mvnrepository.com/artifact/io.jsonwebtoken/jjwt-api -->
     <dependency>
       <groupId>io.jsonwebtoken</groupId>

@@ -4,12 +4,12 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.exceptions.ConflictException;
-import com.spring.app.exceptions.ResourceNotFoundException;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.response.LoginResponseDto;
@@ -44,7 +44,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     user.setPassword(passwordEncoder.encode(user.getPassword()));
     this.userRepository.save(user);
 
-    final RegisterResponseDto response = RegisterResponseDto.builder().email(user.getEmail()).build();
+    RegisterResponseDto response = RegisterResponseDto.builder().email(user.getEmail()).build();
 
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(BaseResponse.success("User registered successfully", HttpStatus.CREATED, response));
@@ -53,11 +53,11 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   @Override
   public ResponseEntity<BaseResponse> login(LoginRequestDto dto) {
-    authenticationManager.authenticate(
-        new UsernamePasswordAuthenticationToken(dto.getEmail(), dto.getPassword()));
+    Authentication authentication = authenticationManager.authenticate(
+        new UsernamePasswordAuthenticationToken(dto.getEmail(), dto.getPassword())
+    );
 
-    User user = this.userRepository.findByEmail(dto.getEmail())
-        .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    User user = (User) authentication.getPrincipal();
 
     String accessToken = jwtService.generateToken(user);
     String refreshToken = jwtService.generateRefreshToken(user);
@@ -69,6 +69,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
         .build();
 
     return ResponseEntity.ok(BaseResponse.success("User logged in successfully", response));
-  }
+}
+
 
 }
