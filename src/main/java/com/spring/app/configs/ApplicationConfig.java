@@ -33,7 +33,7 @@ public class ApplicationConfig {
    */
   @Bean
   UserDetailsService userDetailsService() {
-    return username -> this.userRepository.findByEmail(username)
+    return username -> userRepository.findByEmail(username)
         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
   }
 
@@ -72,7 +72,7 @@ public class ApplicationConfig {
    */
   @Bean
   AuditorAware<UUID> auditorProvider() {
-    return this.applicationAuditAware;
+    return applicationAuditAware;
   }
 
   /**

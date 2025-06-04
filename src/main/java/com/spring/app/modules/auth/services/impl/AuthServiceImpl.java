@@ -36,13 +36,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   @Override
   public ResponseEntity<BaseResponse> register(RegisterRequestDto dto) {
-    if (this.userRepository.existsByEmail(dto.getEmail())) {
+    if (userRepository.existsByEmail(dto.getEmail())) {
       throw new ConflictException("Email already exists");
     }
 
-    User user = this.userMapper.registerRequestDtoToUser(dto);
+    User user = userMapper.registerRequestDtoToUser(dto);
     user.setPassword(passwordEncoder.encode(user.getPassword()));
-    this.userRepository.save(user);
+    userRepository.save(user);
 
     RegisterResponseDto response = RegisterResponseDto.builder().email(user.getEmail()).build();
 
@@ -63,7 +63,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     String refreshToken = jwtService.generateRefreshToken(user);
 
     LoginResponseDto response = LoginResponseDto.builder()
-        .userResponseDto(this.userMapper.userToUserResponseDto(user))
+        .userResponseDto(userMapper.userToUserResponseDto(user))
         .accessToken(accessToken)
         .refreshToken(refreshToken)
         .build();
