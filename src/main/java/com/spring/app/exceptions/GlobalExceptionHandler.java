@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.*;
 
 import com.spring.app.common.response.BaseResponse;
 
+import jakarta.mail.MessagingException;
+
 import java.util.ArrayList;
 import java.util.stream.Collectors;
 
@@ -85,7 +87,7 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(BadCredentialsException.class)
   public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
     log.error("Bad credentials: {}", ex.getMessage());
-    return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+    return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid username or password");
   }
 
   /**
@@ -148,6 +150,22 @@ public class GlobalExceptionHandler {
   public ResponseEntity<BaseResponse<Void>> handleGeneric(Exception ex, HttpServletRequest request) {
     log.error("Unhandled exception at {}: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Server error: " + ex.getMessage());
+  }
+
+  /**
+   * Handles exceptions of type {@link MessagingException}. These are thrown
+   * when there is a problem sending an email. The response will have a status
+   * of {@link HttpStatus#INTERNAL_SERVER_ERROR} and a message that includes
+   * the message of the exception.
+   * 
+   * @param ex The exception to handle.
+   * @return A {@link ResponseEntity} with a status of
+   *         {@link HttpStatus#INTERNAL_SERVER_ERROR} and an error message.
+   */
+  @ExceptionHandler(MessagingException.class)
+  public ResponseEntity<BaseResponse<Void>> handleMessagingException(MessagingException ex) {
+    log.error("Messaging exception: {}", ex.getMessage());
+    return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Send email error: " + ex.getMessage());
   }
 
   /**
