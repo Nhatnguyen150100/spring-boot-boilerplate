@@ -10,7 +10,6 @@ import org.springframework.security.core.*;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.util.Collections;
 
 @Entity
 @Table(name = "users")

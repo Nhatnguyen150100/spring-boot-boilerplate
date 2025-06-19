@@ -24,7 +24,7 @@ import lombok.Setter;
 @AllArgsConstructor
 public class RefreshToken extends BaseEntity {
 
-  @Column()
+  @Column(length = 512)
   private String token;
 
   @Column()
