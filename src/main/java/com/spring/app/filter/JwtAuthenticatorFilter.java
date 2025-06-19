@@ -14,7 +14,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.spring.app.services.JwtService;
+import com.spring.app.shared.services.JwtServiceInterface;
 
 import java.io.IOException;
 
@@ -22,7 +22,7 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticatorFilter extends OncePerRequestFilter {
 
-  private final JwtService jwtService;
+  private final JwtServiceInterface jwtService;
   private final UserDetailsService userDetailsService;
 
   /**

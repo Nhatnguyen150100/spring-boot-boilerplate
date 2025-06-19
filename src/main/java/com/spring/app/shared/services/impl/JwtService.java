@@ -1,4 +1,4 @@
-package com.spring.app.services;
+package com.spring.app.shared.services.impl;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -15,9 +15,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.modules.auth.entities.User;
+import com.spring.app.shared.services.JwtServiceInterface;
 
 @Service
-public class JwtService {
+public class JwtService implements JwtServiceInterface {
 
   @Value("${application.security.jwt.secret-key}")
   private String secretKey;
@@ -32,28 +33,34 @@ public class JwtService {
    * @param token A JWT token.
    * @return The username from the token.
    */
+  @Override
   public String extractUsername(String token) {
     return extractClaim(token, Claims::getSubject);
   }
 
+  @Override
   public String extractUserId(String token) {
     return extractClaim(token, claims -> claims.get("id", String.class));
   }
 
+  @Override
   public String extractRole(String token) {
     return extractClaim(token, claims -> claims.get("role", String.class));
   }
 
+  @Override
   public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
     final Claims claims = extractAllClaims(token);
     return claimsResolver.apply(claims);
   }
 
+  @Override
   public String generateToken(User user) {
     Map<String, Object> extraClaims = getHashObject(user);
     return buildToken(extraClaims, user, jwtExpiration);
   }
 
+  @Override
   public String generateRefreshToken(
       User user) {
     Map<String, Object> extraClaims = getHashObject(user);
@@ -82,6 +89,7 @@ public class JwtService {
     return extraClaims;
   }
 
+  @Override
   public boolean isTokenValid(String token, UserDetails userDetails) {
     final String username = extractUsername(token);
     return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);

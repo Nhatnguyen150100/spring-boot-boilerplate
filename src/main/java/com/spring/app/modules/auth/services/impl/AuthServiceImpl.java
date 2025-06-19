@@ -18,7 +18,7 @@ import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.mapper.UserMapper;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
-import com.spring.app.services.JwtService;
+import com.spring.app.shared.services.JwtServiceInterface;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthServiceImpl implements AuthServiceInterface {
 
   private final UserRepository userRepository;
-  private final JwtService jwtService;
+  private final JwtServiceInterface jwtService;
   private final PasswordEncoder passwordEncoder;
   private final AuthenticationManager authenticationManager;
   private final UserMapper userMapper;
