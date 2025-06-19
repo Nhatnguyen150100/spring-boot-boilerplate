@@ -2,6 +2,7 @@ package com.spring.app.modules.auth.controller;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
+import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 
@@ -9,6 +10,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.apache.coyote.BadRequestException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,5 +33,11 @@ public class AuthController {
   @PostMapping("/login")
   public ResponseEntity<BaseResponse> login(@Valid @RequestBody LoginRequestDto dto) {
     return authService.login(dto);
+  }
+
+  @Operation(summary = "Refresh your token", description = "Refresh your token")
+  @PostMapping("/refresh-token")
+  public ResponseEntity<BaseResponse> refresh(@Valid @RequestBody RefreshTokenDto dto) throws BadRequestException {
+    return authService.refreshToken(dto);
   }
 }
