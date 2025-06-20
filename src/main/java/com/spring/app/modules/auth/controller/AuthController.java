@@ -8,6 +8,7 @@ import com.spring.app.modules.auth.services.AuthServiceInterface;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -39,5 +40,11 @@ public class AuthController {
   @PostMapping("/refresh-token")
   public ResponseEntity<BaseResponse> refresh(@Valid @RequestBody RefreshTokenDto dto) throws BadRequestException {
     return authService.refreshToken(dto);
+  }
+
+  @Operation(summary = "Logout your account", description = "Logout your account")
+  @DeleteMapping("/logout")
+  public ResponseEntity<BaseResponse> logout(HttpServletRequest request) {
+    return authService.logout(request);
   }
 }

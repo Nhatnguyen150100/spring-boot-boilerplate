@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-public class HtmlTemplateBuilder {
+public class HtmlTemplateOTPBuilder {
   public static String buildOtpHtml(String otp) {
     try {
       String template = Files.readString(Paths.get("src/main/resources/templates/otp-email.html"));

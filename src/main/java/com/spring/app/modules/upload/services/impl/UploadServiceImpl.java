@@ -1,11 +1,9 @@
 package com.spring.app.modules.upload.services.impl;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-
+import com.spring.app.common.response.BaseResponse;
+import com.spring.app.modules.upload.services.UploadServiceInterface;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -16,82 +14,88 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.spring.app.common.response.BaseResponse;
-import com.spring.app.modules.upload.services.UploadServiceInterface;
-
-import jakarta.annotation.PostConstruct;
-import lombok.extern.slf4j.Slf4j;
+import java.io.IOException;
+import java.nio.file.*;
 
 @Service
 @Slf4j
 public class UploadServiceImpl implements UploadServiceInterface {
 
-  @Value("${file.upload-dir}")
-  private String uploadDir;
+    @Value("${file.upload-dir}")
+    private String uploadDir;
 
-  private Path uploadPath;
+    private Path uploadPath;
 
-  @PostConstruct
-  public void init() throws BadRequestException {
-    if (this.uploadDir == null || this.uploadDir.isBlank()) {
-      throw new BadRequestException("Configuration file.upload-dir must not be empty!");
+    @PostConstruct
+    public void init() throws BadRequestException {
+        validateUploadDirConfig();
+        initUploadPath();
     }
 
-    this.uploadPath = Paths.get(this.uploadDir).toAbsolutePath().normalize();
-
-    try {
-      Files.createDirectories(this.uploadPath);
-      log.info("Upload folder created at: {}", this.uploadPath);
-    } catch (IOException ex) {
-      log.error("Failed to create upload directory at: {}", this.uploadPath, ex);
-      throw new BadRequestException("Could not create upload directory at: " + this.uploadPath, ex);
+    private void validateUploadDirConfig() throws BadRequestException {
+        if (uploadDir == null || uploadDir.isBlank()) {
+            throw new BadRequestException("Cấu hình 'file.upload-dir' không được để trống!");
+        }
     }
-  }
 
-  @Override
-  public ResponseEntity<BaseResponse> getUploadPath() {
-    return ResponseEntity.ok(BaseResponse.success("Get upload path successfully", uploadPath));
-  }
-
-  @Override
-  public ResponseEntity<BaseResponse> storeFile(MultipartFile file) throws BadRequestException {
-    log.info(file.toString());
-    try {
-      if (file.isEmpty())
-        throw new BadRequestException("Empty file!");
-
-      String fileName = Path.of(file.getOriginalFilename()).getFileName().toString();
-      Path targetLocation = this.uploadPath.resolve(fileName);
-      Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
-
-      log.info("File saved: {}", fileName);
-      return ResponseEntity.ok(BaseResponse.success("Upload file successfully", fileName));
-    } catch (IOException ex) {
-      log.error("Error while saving file", ex);
-      throw new BadRequestException("Failed to save file!", ex);
+    private void initUploadPath() throws BadRequestException {
+        this.uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(uploadPath);
+            log.info("Upload folder initialized at: {}", uploadPath);
+        } catch (IOException ex) {
+            log.error("Không thể tạo thư mục upload tại: {}", uploadPath, ex);
+            throw new BadRequestException("Không thể tạo thư mục upload!", ex);
+        }
     }
-  }
 
-  @Override
-  public ResponseEntity downFile(String filename) throws BadRequestException {
-    try {
-      Path filePath = uploadPath.resolve(filename).normalize();
-      Resource resource = new UrlResource(filePath.toUri());
-
-      if (!resource.exists()) {
-        log.warn("File not found: {}", filename);
-        throw new BadRequestException("File not found: " + filename);
-      }
-
-      return ResponseEntity.ok()
-          .contentType(MediaType.APPLICATION_OCTET_STREAM)
-          .header(HttpHeaders.CONTENT_DISPOSITION,
-              "attachment; filename=\"" + resource.getFilename() + "\"")
-          .body(resource);
-    } catch (Exception e) {
-      log.error("Failed to download file: {}", filename, e);
-      throw new BadRequestException("Failed to download file: " + filename, e);
+    @Override
+    public ResponseEntity<BaseResponse> getUploadPath() {
+        return ResponseEntity.ok(BaseResponse.success("Lấy đường dẫn upload thành công", uploadPath.toString()));
     }
-  }
 
+    @Override
+    public ResponseEntity<BaseResponse> storeFile(MultipartFile file) throws BadRequestException {
+        validateFile(file);
+
+        String fileName = Path.of(file.getOriginalFilename()).getFileName().toString();
+        Path targetPath = uploadPath.resolve(fileName);
+
+        try {
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+            log.info("File đã được lưu: {}", fileName);
+            return ResponseEntity.ok(BaseResponse.success("Upload file thành công", fileName));
+        } catch (IOException ex) {
+            log.error("Lỗi khi lưu file: {}", fileName, ex);
+            throw new BadRequestException("Không thể lưu file!", ex);
+        }
+    }
+
+    @Override
+    public ResponseEntity<Resource> downFile(String filename) throws BadRequestException {
+        try {
+            Path filePath = uploadPath.resolve(filename).normalize();
+            Resource resource = new UrlResource(filePath.toUri());
+
+            if (!resource.exists() || !resource.isReadable()) {
+                log.warn("Không tìm thấy file: {}", filename);
+                throw new BadRequestException("File không tồn tại: " + filename);
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + resource.getFilename() + "\"")
+                    .body(resource);
+
+        } catch (Exception e) {
+            log.error("Lỗi khi tải file: {}", filename, e);
+            throw new BadRequestException("Không thể tải file: " + filename, e);
+        }
+    }
+
+    private void validateFile(MultipartFile file) throws BadRequestException {
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException("File tải lên rỗng!");
+        }
+    }
 }
