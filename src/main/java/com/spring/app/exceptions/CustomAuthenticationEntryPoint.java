@@ -17,6 +17,24 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
+  /**
+   * Handles the commencement of an authentication scheme by sending an
+   * unauthorized error response in JSON format.
+   *
+   * <p>
+   * This method is triggered when an unauthenticated user tries to access a
+   * resource that requires authentication. It sets the response status to
+   * {@link HttpServletResponse#SC_UNAUTHORIZED}, specifies the content type as
+   * "application/json", and writes a JSON error message indicating unauthorized
+   * access.
+   *
+   * @param request       the HTTP request
+   * @param response      the HTTP response
+   * @param authException the authentication exception encountered
+   * @throws IOException      if an I/O error occurs
+   * @throws ServletException if an error occurs during the handling process
+   */
+
   @Override
   public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
       throws IOException, ServletException {
