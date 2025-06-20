@@ -120,7 +120,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return ResponseEntity.ok(BaseResponse.success("Token refreshed successfully", tokenResponse));
   }
 
-
   private void validateEmailUniqueness(String email) {
     if (userRepository.existsByEmail(email)) {
       throw new ConflictException("Email already exists");
