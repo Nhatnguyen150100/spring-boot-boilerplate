@@ -32,8 +32,8 @@ public class GlobalExceptionHandler {
    *         {@link HttpStatus#NOT_FOUND} and the message of the exception.
    */
   @ExceptionHandler(ResourceNotFoundException.class)
-  public ResponseEntity<BaseResponse<Void>> handleNotFound(ResourceNotFoundException ex) {
-    log.error("Not found: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleNotFound(ResourceNotFoundException ex, HttpServletRequest request) {
+    log.error("Not found at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
   }
 
@@ -46,14 +46,14 @@ public class GlobalExceptionHandler {
    *         {@link HttpStatus#BAD_REQUEST} and the message of the exception.
    */
   @ExceptionHandler(BadRequestException.class)
-  public ResponseEntity<BaseResponse<Void>> handleBadRequest(BadRequestException ex) {
-    log.error("Bad request: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleBadRequest(BadRequestException ex, HttpServletRequest request) {
+    log.error("Bad request at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
   }
 
   @ExceptionHandler(ConflictException.class)
-  public ResponseEntity<BaseResponse<Void>> handleConflictException(ConflictException ex) {
-    log.error("Conflict request: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleConflictException(ConflictException ex, HttpServletRequest request) {
+    log.error("Conflict at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
   }
 
@@ -67,13 +67,13 @@ public class GlobalExceptionHandler {
    * messages.
    */
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<BaseResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
+  public ResponseEntity<BaseResponse<Void>> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
     String message = ex.getBindingResult()
         .getFieldErrors()
         .stream()
         .map(err -> err.getField() + ": " + err.getDefaultMessage())
         .collect(Collectors.joining(", "));
-    log.error("Validation error: {}", message);
+    log.error("Validation error at end point: {} - Message: {}", request.getRequestURI(), message);
     return buildErrorResponse(HttpStatus.BAD_REQUEST, message);
   }
 
@@ -85,8 +85,8 @@ public class GlobalExceptionHandler {
    * message that indicates that the username or password were invalid.
    */
   @ExceptionHandler(BadCredentialsException.class)
-  public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex) {
-    log.error("Bad credentials: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex, HttpServletRequest request) {
+    log.error("Bad credentials at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid username or password");
   }
 
@@ -102,8 +102,8 @@ public class GlobalExceptionHandler {
    *         {@link HttpStatus#FORBIDDEN} and an error message.
    */
   @ExceptionHandler(AccessDeniedException.class)
-  public ResponseEntity<BaseResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
-    log.error("Access denied: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+    log.error("Access denied at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.FORBIDDEN, "You do not have permission to access this resource");
   }
 
@@ -121,7 +121,7 @@ public class GlobalExceptionHandler {
    *         error message.
    */
   @ExceptionHandler(TransactionSystemException.class)
-  public ResponseEntity<?> handleTransactionException(TransactionSystemException ex) {
+  public ResponseEntity<?> handleTransactionException(TransactionSystemException ex, HttpServletRequest request) {
     Throwable cause = ex.getRootCause();
     if (cause instanceof ConstraintViolationException violationEx) {
       ArrayList<String> errors = new ArrayList<>();
@@ -130,7 +130,9 @@ public class GlobalExceptionHandler {
       return buildErrorResponse(HttpStatus.BAD_REQUEST, errors.stream().collect(Collectors.joining(",")));
     }
 
-    return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Server error: " + ex.getMessage());
+    log.error("Transaction error at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
+
+    return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Server error" + ex.getMessage());
   }
 
   /**
@@ -148,7 +150,7 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(Exception.class)
   public ResponseEntity<BaseResponse<Void>> handleGeneric(Exception ex, HttpServletRequest request) {
-    log.error("Unhandled exception at {}: {}", request.getRequestURI(), ex.getMessage());
+    log.error("Unhandled exception at end point {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Server error: " + ex.getMessage());
   }
 
@@ -163,8 +165,8 @@ public class GlobalExceptionHandler {
    *         {@link HttpStatus#INTERNAL_SERVER_ERROR} and an error message.
    */
   @ExceptionHandler(MessagingException.class)
-  public ResponseEntity<BaseResponse<Void>> handleMessagingException(MessagingException ex) {
-    log.error("Messaging exception: {}", ex.getMessage());
+  public ResponseEntity<BaseResponse<Void>> handleMessagingException(MessagingException ex, HttpServletRequest request) {
+    log.error("Messaging exception at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Send email error: " + ex.getMessage());
   }
 
