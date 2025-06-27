@@ -12,4 +12,6 @@ public interface UploadServiceInterface {
   ResponseEntity<BaseResponse> storeFile(MultipartFile file) throws BadRequestException;
 
   ResponseEntity downFile(String filename) throws BadRequestException;
+
+  ResponseEntity deleteFile(String filename) throws BadRequestException;
 }

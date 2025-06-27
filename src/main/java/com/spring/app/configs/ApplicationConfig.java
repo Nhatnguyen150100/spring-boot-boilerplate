@@ -13,6 +13,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.AntPathMatcher;
 
 import com.spring.app.modules.auth.repositories.UserRepository;
 
@@ -35,6 +36,18 @@ public class ApplicationConfig {
   UserDetailsService userDetailsService() {
     return username -> userRepository.findByEmail(username)
         .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+  }
+
+  /**
+   * Provides an AntPathMatcher bean that is used for matching URL patterns
+   * with Ant-style path patterns in Spring applications.
+   * 
+   * @return An AntPathMatcher instance for URL pattern matching.
+   */
+
+  @Bean
+  AntPathMatcher antPathMatcher() {
+    return new AntPathMatcher();
   }
 
   /**

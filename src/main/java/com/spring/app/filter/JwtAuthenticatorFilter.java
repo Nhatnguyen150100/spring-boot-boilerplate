@@ -13,8 +13,10 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.spring.app.constants.WhitelistUrlConstant;
 import com.spring.app.shared.services.JwtServiceInterface;
 
 import java.io.IOException;
@@ -25,6 +27,7 @@ public class JwtAuthenticatorFilter extends OncePerRequestFilter {
 
   private final JwtServiceInterface jwtService;
   private final UserDetailsService userDetailsService;
+  private final AntPathMatcher pathMatcher;
 
   /**
    * Filters incoming HTTP requests to authenticate JWT tokens.
@@ -48,6 +51,11 @@ public class JwtAuthenticatorFilter extends OncePerRequestFilter {
       FilterChain filterChain)
       throws ServletException, IOException {
 
+    if (isPublicRoute(request)) {
+      filterChain.doFilter(request, response);
+      return;
+    }
+
     String jwt = extractTokenFromHeader(request);
 
     if (jwt != null) {
@@ -59,6 +67,27 @@ public class JwtAuthenticatorFilter extends OncePerRequestFilter {
     }
 
     filterChain.doFilter(request, response);
+  }
+
+  private boolean isPublicRoute(HttpServletRequest request) {
+    String method = request.getMethod();
+    String path = request.getRequestURI();
+
+    for (String pattern : WhitelistUrlConstant.PUBLIC_URLS) {
+      if (pathMatcher.match(pattern, path)) {
+        return true;
+      }
+    }
+
+    if ("GET".equalsIgnoreCase(method)) {
+      for (String pattern : WhitelistUrlConstant.PUBLIC_GET_URLS) {
+        if (pathMatcher.match(pattern, path)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**

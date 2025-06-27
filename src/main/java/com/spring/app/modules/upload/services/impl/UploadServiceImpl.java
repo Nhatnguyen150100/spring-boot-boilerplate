@@ -98,4 +98,17 @@ public class UploadServiceImpl implements UploadServiceInterface {
       throw new BadRequestException("File tải lên rỗng!");
     }
   }
+
+  @Override
+  public ResponseEntity deleteFile(String filename) throws BadRequestException {
+    try {
+      Path filePath = uploadPath.resolve(filename).normalize();
+      Files.delete(filePath);
+      log.info("File {} has been deleted", filename);
+      return ResponseEntity.ok(BaseResponse.success("Xóa file thành công", filename));
+    } catch (IOException ex) {
+      log.error("Lỗi khi xóa file: {}", filename, ex);
+      throw new BadRequestException("Không thể xóa file: " + filename, ex);
+    }
+  }
 }

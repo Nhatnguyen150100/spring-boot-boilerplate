@@ -3,6 +3,9 @@ package com.spring.app.shared.services.impl;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.Jwts.SIG;
+import io.jsonwebtoken.io.Decoders;
+import io.jsonwebtoken.security.Keys;
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -113,6 +116,7 @@ public class JwtService implements JwtServiceInterface {
   }
 
   private SecretKey getSignInKey() {
-    return SIG.HS256.key().build();
+    byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+    return Keys.hmacShaKeyFor(keyBytes);
   }
 }

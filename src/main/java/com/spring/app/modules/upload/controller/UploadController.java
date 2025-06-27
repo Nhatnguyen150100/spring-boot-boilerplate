@@ -41,4 +41,12 @@ public class UploadController {
       throws BadRequestException {
     return uploadService.downFile(filename);
   }
+
+
+  @Operation(summary = "Delete a file by filename", description = "Delete a file based on its filename")
+  @DeleteMapping("/delete/{filename:.+}")
+  public ResponseEntity<BaseResponse> deleteFileByName(
+      @Parameter(description = "Filename to delete", required = true) @PathVariable String filename) throws BadRequestException {
+    return uploadService.deleteFile(filename);
+  }
 }
