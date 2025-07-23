@@ -12,6 +12,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.common.response.BaseResponse;
@@ -127,9 +128,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   private User authenticate(String email, String password) {
-    Authentication authentication = authenticationManager.authenticate(
-        new UsernamePasswordAuthenticationToken(email, password));
-    return (User) authentication.getPrincipal();
+    Authentication authentication = new UsernamePasswordAuthenticationToken(email, password);
+    Authentication authenticated = authenticationManager.authenticate(authentication);
+    return (User) authenticated.getPrincipal();
   }
 
   private String createAndStoreRefreshToken(User user) {
