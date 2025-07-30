@@ -2,6 +2,7 @@ package com.spring.app.modules.auth.entities;
 
 import com.spring.app.common.entities.BaseEntity;
 import com.spring.app.enums.ERole;
+import com.spring.app.enums.EUserStatus;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import jakarta.persistence.*;
@@ -32,16 +33,24 @@ public class User extends BaseEntity implements UserDetails {
 
   private String phone;
 
-  private String avatarUrl;
+  private String address;
 
-  @Builder.Default
-  private boolean locked = false;
+  private String dateOfBirth;
+
+  @Column(length = 512)
+  private String description;
+
+  private String avatarUrl;
 
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
-
   @Builder.Default
   private ERole role = ERole.USER;
+
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  @Builder.Default
+  private EUserStatus status = EUserStatus.SUSPENDED;
 
   @Override
   public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -51,5 +60,10 @@ public class User extends BaseEntity implements UserDetails {
   @Override
   public String getUsername() {
     return this.email;
+  }
+
+  @Override
+  public String getPassword() {
+    return this.password;
   }
 }

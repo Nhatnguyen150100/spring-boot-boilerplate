@@ -16,6 +16,9 @@ public class UserResponseDto {
   String fullName;
   String phone;
   String avatarUrl;
-  Boolean locked;
+  String address;
+  String dateOfBirth;
+  String status;
+  String description;
   String role;
 }

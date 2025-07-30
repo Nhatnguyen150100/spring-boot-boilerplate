@@ -1,6 +1,7 @@
 package com.spring.app.enums;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -39,7 +40,10 @@ public enum ERole {
     var authorities = this.getListPermission().stream()
         .map(permission -> new SimpleGrantedAuthority(permission.getPermission()))
         .collect(Collectors.toList());
-    authorities.add(new SimpleGrantedAuthority("ROLE_" + this.name()));
+    Comparator<SimpleGrantedAuthority> comparator = Comparator.comparing(SimpleGrantedAuthority::getAuthority);
+    authorities.sort(comparator);
+    StringBuilder sb = new StringBuilder("ROLE_");
+    authorities.add(new SimpleGrantedAuthority(sb.append(this.name()).toString()));
     return authorities;
   }
 }

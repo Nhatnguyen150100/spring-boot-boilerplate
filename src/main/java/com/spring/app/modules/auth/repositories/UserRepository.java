@@ -17,4 +17,5 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
   @NonNull
   Optional<User> findById(UUID id);
+
 }

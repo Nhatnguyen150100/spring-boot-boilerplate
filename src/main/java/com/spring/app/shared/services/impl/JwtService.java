@@ -2,13 +2,13 @@ package com.spring.app.shared.services.impl;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.Jwts.SIG;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 import javax.crypto.SecretKey;
@@ -17,6 +17,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
+import com.spring.app.enums.ERole;
+import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.shared.services.JwtServiceInterface;
 
@@ -42,13 +44,18 @@ public class JwtService implements JwtServiceInterface {
   }
 
   @Override
-  public String extractUserId(String token) {
-    return extractClaim(token, claims -> claims.get("id", String.class));
+  public UUID extractUserId(String token) {
+    return extractClaim(token, claims -> claims.get("id", UUID.class));
   }
 
   @Override
-  public String extractRole(String token) {
-    return extractClaim(token, claims -> claims.get("role", String.class));
+  public ERole extractRole(String token) {
+    return extractClaim(token, claims -> claims.get("role", ERole.class));
+  }
+
+  @Override
+  public EUserStatus extractUserStatus(String token) {
+    return extractClaim(token, claims -> claims.get("status", EUserStatus.class));
   }
 
   @Override
@@ -89,6 +96,7 @@ public class JwtService implements JwtServiceInterface {
     extraClaims.put("id", user.getId());
     extraClaims.put("role", user.getRole());
     extraClaims.put("email", user.getEmail());
+    extraClaims.put("status", user.getStatus());
     return extraClaims;
   }
 

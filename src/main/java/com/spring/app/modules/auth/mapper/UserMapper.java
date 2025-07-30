@@ -12,7 +12,10 @@ import com.spring.app.modules.auth.entities.User;
 public interface UserMapper {
   @Mapping(target = "avatarUrl", ignore = true)
   @Mapping(target = "phone", ignore = true)
-  @Mapping(target = "locked", ignore = true)
+  @Mapping(target = "address", ignore = true)
+  @Mapping(target = "dateOfBirth", ignore = true)
+  @Mapping(target = "description", ignore = true)
+  @Mapping(target = "status", ignore = true)
   @Mapping(target = "role", ignore = true)
   User registerRequestDtoToUser(RegisterRequestDto dto);
 
