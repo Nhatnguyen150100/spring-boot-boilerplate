@@ -1,8 +1,10 @@
 package com.spring.app.modules.auth.controller;
 
+import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
+import com.spring.app.modules.auth.dto.request.ResendOtpRequestDto;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +29,19 @@ public class AuthController {
   @PostMapping("/register")
   public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto dto) {
     return authService.register(dto);
+  }
+
+  @Operation(summary = "Resend OTP", description = "Resend OTP to the user's email")
+  @PostMapping("/resend-otp")
+  public ResponseEntity<?> resendOtp(
+      @Valid @RequestBody ResendOtpRequestDto resendOtpRequestDto) {
+    return authService.resendOtp(resendOtpRequestDto.getEmail());
+  }
+
+  @Operation(summary = "Activate user account", description = "Activate user account with email and OTP")
+  @PostMapping("/activate")
+  public ResponseEntity<?> activateAccount(@Valid @RequestBody ActiveAccountRequestDto activeAccountRequestDto) {
+    return authService.activeAccount(activeAccountRequestDto);
   }
 
   @Operation(summary = "Login your account", description = "Login your account")

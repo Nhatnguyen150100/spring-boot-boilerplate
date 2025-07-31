@@ -8,7 +8,10 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Configuration
+@Slf4j
 public class RedisConfig {
 
   /**
@@ -46,6 +49,15 @@ public class RedisConfig {
     template.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
 
     template.afterPropertiesSet();
+
+    try {
+      connectionFactory.getConnection().ping();
+      log.info("Successfully connected to Redis");
+    } catch (Exception e) {
+      log.error("Failed to connect to Redis: {}", e.getMessage(), e);
+      throw new RuntimeException("Redis connection failed", e);
+    }
+
     return template;
   }
 }

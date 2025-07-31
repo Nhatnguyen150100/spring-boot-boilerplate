@@ -19,6 +19,7 @@ import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
 import com.spring.app.exceptions.ResourceNotFoundException;
+import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
@@ -92,7 +93,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(BaseResponse.success("User registered successfully", HttpStatus.CREATED, response));
   }
-  
+
   @Override
   public ResponseEntity<?> resendOtp(String email) {
     User user = userRepository.findByEmail(email)
@@ -113,6 +114,27 @@ public class AuthServiceImpl implements AuthServiceInterface {
     }
 
     return ResponseEntity.ok(BaseResponse.success("OTP resent successfully"));
+  }
+
+  @Override
+  public ResponseEntity<?> activeAccount(ActiveAccountRequestDto activeAccountRequestDto) {
+    String email = activeAccountRequestDto.getEmail();
+    String otp = activeAccountRequestDto.getOtp();
+    User user = userRepository.findByEmail(email)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+
+    if (user.getStatus() != EUserStatus.PENDING) {
+      throw new BadRequestException("User is not in pending status, cannot activate account");
+    }
+
+    if (!otpFunction.validateOtp(email, otp)) {
+      throw new BadRequestException("Invalid or expired OTP");
+    }
+
+    user.setStatus(EUserStatus.ACTIVE);
+    userRepository.save(user);
+
+    return ResponseEntity.ok(BaseResponse.success("Account activated successfully"));
   }
 
   @Override
