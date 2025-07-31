@@ -28,7 +28,8 @@ public class RefreshToken extends BaseEntity {
   private String token;
 
   @Column()
-  private boolean isRevoked;
+  @Builder.Default
+  private boolean isRevoked = false;
 
   @Column()
   private Instant expiryDate;

@@ -1,4 +1,4 @@
-package com.spring.app.utils;
+package com.spring.app.templates;
 
 import java.io.IOException;
 import java.nio.file.Files;

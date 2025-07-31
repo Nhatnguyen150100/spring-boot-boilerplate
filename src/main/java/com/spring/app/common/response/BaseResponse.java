@@ -38,6 +38,14 @@ public class BaseResponse<T> {
         .build();
   }
 
+  public static <T> BaseResponse<T> of(HttpStatusCode status, String message) {
+    return BaseResponse.<T>builder()
+        .statusCode(status.value())
+        .message(message)
+        .timestamp(Instant.now().toString())
+        .build();
+  }
+
   /**
    * Creates a new {@link BaseResponse} with a success status and the given
    * message
@@ -86,7 +94,7 @@ public class BaseResponse<T> {
    * @return a new {@link BaseResponse} with the given parameters
    */
   public static <T> BaseResponse<T> success(String message) {
-    return of(HttpStatus.OK, message, null);
+    return of(HttpStatus.OK, message);
   }
 
   /**
@@ -98,6 +106,6 @@ public class BaseResponse<T> {
    * @return a new {@link BaseResponse} with the given parameters
    */
   public static <T> BaseResponse<T> error(HttpStatusCode status, String message) {
-    return of(status, message, null);
+    return of(status, message);
   }
 }

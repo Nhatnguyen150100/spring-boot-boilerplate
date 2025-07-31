@@ -1,4 +1,4 @@
-package com.spring.app.shared.services;
+package com.spring.app.shared.interfaces;
 
 import java.util.UUID;
 import java.util.function.Function;

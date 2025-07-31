@@ -1,4 +1,4 @@
-package com.spring.app.shared.services;
+package com.spring.app.shared.interfaces;
 
 import jakarta.mail.MessagingException;
 

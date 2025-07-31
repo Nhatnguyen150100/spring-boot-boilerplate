@@ -21,4 +21,6 @@ public class UserResponseDto {
   String status;
   String description;
   String role;
+  String createdAt;
+  String updatedAt;
 }

@@ -11,11 +11,13 @@ import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import jakarta.servlet.http.HttpServletRequest;
 
 public interface AuthServiceInterface {
-  ResponseEntity<BaseResponse> register(RegisterRequestDto dto);
+  ResponseEntity<?> register(RegisterRequestDto dto);
 
-  ResponseEntity<BaseResponse> login(LoginRequestDto dto);
+  ResponseEntity<?> resendOtp(String email);
 
-  ResponseEntity<BaseResponse> logout(HttpServletRequest request);
+  ResponseEntity<?> login(LoginRequestDto dto);
 
-  ResponseEntity<BaseResponse> refreshToken(RefreshTokenDto dto) throws BadRequestException;
+  ResponseEntity<?> logout(HttpServletRequest request);
+
+  ResponseEntity<?> refreshToken(RefreshTokenDto dto);
 }

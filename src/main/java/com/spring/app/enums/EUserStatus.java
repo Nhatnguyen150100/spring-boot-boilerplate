@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 public enum EUserStatus {
   ACTIVE("STATUS_ACTIVE"),
   INACTIVE("STATUS_INACTIVE"),
-  SUSPENDED("STATUS_SUSPENDED"),
+  PENDING("STATUS_PENDING"),
   DELETED("STATUS_DELETED");
 
   @Getter

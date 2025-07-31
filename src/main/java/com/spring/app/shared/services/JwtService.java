@@ -1,4 +1,4 @@
-package com.spring.app.shared.services.impl;
+package com.spring.app.shared.services;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import com.spring.app.enums.ERole;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
-import com.spring.app.shared.services.JwtServiceInterface;
+import com.spring.app.shared.interfaces.JwtServiceInterface;
 
 @Service
 public class JwtService implements JwtServiceInterface {

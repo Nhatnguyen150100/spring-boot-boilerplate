@@ -1,10 +1,10 @@
 package com.spring.app.modules.upload.services.impl;
 
 import com.spring.app.common.response.BaseResponse;
+import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.modules.upload.services.UploadServiceInterface;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.coyote.BadRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -34,7 +34,7 @@ public class UploadServiceImpl implements UploadServiceInterface {
 
   private void validateUploadDirConfig() throws BadRequestException {
     if (uploadDir == null || uploadDir.isBlank()) {
-      throw new BadRequestException("Cấu hình 'file.upload-dir' không được để trống!");
+      throw new BadRequestException("Upload directory is not configured properly in application properties.");
     }
   }
 
@@ -44,8 +44,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
       Files.createDirectories(uploadPath);
       log.info("Upload folder initialized at: {}", uploadPath);
     } catch (IOException ex) {
-      log.error("Không thể tạo thư mục upload tại: {}", uploadPath, ex);
-      throw new BadRequestException("Không thể tạo thư mục upload!", ex);
+      log.error("Error creating upload folder: {}", uploadPath, ex);
+      throw new BadRequestException("Cannot create upload folder");
     }
   }
 
@@ -55,7 +55,7 @@ public class UploadServiceImpl implements UploadServiceInterface {
   }
 
   @Override
-  public ResponseEntity<BaseResponse> storeFile(MultipartFile file) throws BadRequestException {
+  public ResponseEntity<BaseResponse> storeFile(MultipartFile file) {
     validateFile(file);
 
     String fileName = Path.of(file.getOriginalFilename()).getFileName().toString();
@@ -63,11 +63,11 @@ public class UploadServiceImpl implements UploadServiceInterface {
 
     try {
       Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
-      log.info("File đã được lưu: {}", fileName);
+      log.info("File {} has been saved", fileName);
       return ResponseEntity.ok(BaseResponse.success("Upload file thành công", fileName));
     } catch (IOException ex) {
-      log.error("Lỗi khi lưu file: {}", fileName, ex);
-      throw new BadRequestException("Không thể lưu file!", ex);
+      log.error("Error saving file: {}", fileName, ex);
+      throw new BadRequestException("Cannot save file");
     }
   }
 
@@ -78,8 +78,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
       Resource resource = new UrlResource(filePath.toUri());
 
       if (!resource.exists() || !resource.isReadable()) {
-        log.warn("Không tìm thấy file: {}", filename);
-        throw new BadRequestException("File không tồn tại: " + filename);
+        log.warn("File not found: {}", filename);
+        throw new BadRequestException("File not found");
       }
 
       return ResponseEntity.ok()
@@ -88,14 +88,14 @@ public class UploadServiceImpl implements UploadServiceInterface {
           .body(resource);
 
     } catch (Exception e) {
-      log.error("Lỗi khi tải file: {}", filename, e);
-      throw new BadRequestException("Không thể tải file: " + filename, e);
+      log.error("Error downloading file: {}", filename, e);
+      throw new BadRequestException("Cannot download file");
     }
   }
 
   private void validateFile(MultipartFile file) throws BadRequestException {
     if (file == null || file.isEmpty()) {
-      throw new BadRequestException("File tải lên rỗng!");
+      throw new BadRequestException("File is empty or not provided");
     }
   }
 
@@ -105,10 +105,10 @@ public class UploadServiceImpl implements UploadServiceInterface {
       Path filePath = uploadPath.resolve(filename).normalize();
       Files.delete(filePath);
       log.info("File {} has been deleted", filename);
-      return ResponseEntity.ok(BaseResponse.success("Xóa file thành công", filename));
+      return ResponseEntity.ok(BaseResponse.success("Delete file success", filename));
     } catch (IOException ex) {
-      log.error("Lỗi khi xóa file: {}", filename, ex);
-      throw new BadRequestException("Không thể xóa file: " + filename, ex);
+      log.error("Error deleting file: {}", filename, ex);
+      throw new BadRequestException("Cannot delete file");
     }
   }
 }

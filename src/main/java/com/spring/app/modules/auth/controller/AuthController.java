@@ -1,6 +1,5 @@
 package com.spring.app.modules.auth.controller;
 
-import com.spring.app.common.response.BaseResponse;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
@@ -26,25 +25,25 @@ public class AuthController {
 
   @Operation(summary = "Register a new user", description = "Registers a new user")
   @PostMapping("/register")
-  public ResponseEntity<BaseResponse> register(@Valid @RequestBody RegisterRequestDto dto) {
+  public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDto dto) {
     return authService.register(dto);
   }
 
   @Operation(summary = "Login your account", description = "Login your account")
   @PostMapping("/login")
-  public ResponseEntity<BaseResponse> login(@Valid @RequestBody LoginRequestDto dto) {
+  public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto) {
     return authService.login(dto);
   }
 
   @Operation(summary = "Refresh your token", description = "Refresh your token")
   @PostMapping("/refresh-token")
-  public ResponseEntity<BaseResponse> refresh(@Valid @RequestBody RefreshTokenDto dto) throws BadRequestException {
+  public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenDto dto) throws BadRequestException {
     return authService.refreshToken(dto);
   }
 
   @Operation(summary = "Logout your account", description = "Logout your account")
   @DeleteMapping("/logout")
-  public ResponseEntity<BaseResponse> logout(HttpServletRequest request) {
+  public ResponseEntity<?> logout(HttpServletRequest request) {
     return authService.logout(request);
   }
 }

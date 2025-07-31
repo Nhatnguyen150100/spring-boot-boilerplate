@@ -7,12 +7,13 @@ import org.springframework.stereotype.Service;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.exceptions.ResourceNotFoundException;
-import com.spring.app.modules.auth.mapper.UserMapper;
+import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.user.dto.requests.UpdateUserDto;
 import com.spring.app.modules.user.mapper.UpdateUserMapper;
 import com.spring.app.modules.user.services.UserServiceInterface;
 
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 public class UserService implements UserServiceInterface {
 
   private final UserRepository userRepository;
-  private final UserMapper userMapper;
+  private final AuthMapper userMapper;
   private final UpdateUserMapper updateUserMapper;
 
   @Override
@@ -36,6 +37,7 @@ public class UserService implements UserServiceInterface {
   }
 
   @Override
+  @Transactional
   public ResponseEntity<?> updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userId));

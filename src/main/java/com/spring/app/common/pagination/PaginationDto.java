@@ -15,6 +15,11 @@ public class PaginationDto {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private String search;
 
+  /**
+   * Calculates the skip value for pagination queries.
+   *
+   * @return The skip value.
+   */
   public int skip() {
     return (this.page - 1) * this.limit;
   }

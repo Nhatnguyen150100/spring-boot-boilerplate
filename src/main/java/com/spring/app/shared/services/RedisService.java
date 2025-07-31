@@ -1,16 +1,18 @@
-package com.spring.app.shared.services.impl;
+package com.spring.app.shared.services;
 
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-import com.spring.app.shared.services.RedisServiceInterface;
+import com.spring.app.shared.interfaces.RedisServiceInterface;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RedisService implements RedisServiceInterface {
   private final RedisTemplate<String, Object> redisTemplate;
 
@@ -26,7 +28,12 @@ public class RedisService implements RedisServiceInterface {
    */
   @Override
   public void setValue(String key, Object value, long duration, TimeUnit unit) {
-    redisTemplate.opsForValue().set(key, value, duration, unit);
+    try {
+      redisTemplate.opsForValue().set(key, value, duration, unit);
+    } catch (Exception e) {
+      log.error("Failed to set value in Redis for key: {}", key, e);
+      throw new RuntimeException("Could not store value in Redis", e);
+    }
   }
 
   /**

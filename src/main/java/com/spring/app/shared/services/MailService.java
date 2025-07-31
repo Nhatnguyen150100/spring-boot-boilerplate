@@ -1,4 +1,4 @@
-package com.spring.app.shared.services.impl;
+package com.spring.app.shared.services;
 
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -8,8 +8,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
-import com.spring.app.shared.services.MailServiceInterface;
-import com.spring.app.utils.HtmlTemplateOTPBuilder;
+import com.spring.app.shared.interfaces.MailServiceInterface;
+import com.spring.app.templates.HtmlTemplateOTPBuilder;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;

@@ -1,10 +1,9 @@
 package com.spring.app.configs;
 
-import java.util.UUID;
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -15,12 +14,16 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.AntPathMatcher;
 
+import com.spring.app.enums.EUserStatus;
+import com.spring.app.exceptions.UserNotActiveException;
+import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
 @Configuration
 @RequiredArgsConstructor
+@EnableJpaAuditing(auditorAwareRef = "applicationAuditAware")
 public class ApplicationConfig {
 
   private final UserRepository userRepository;
@@ -34,8 +37,16 @@ public class ApplicationConfig {
    */
   @Bean
   UserDetailsService userDetailsService() {
-    return username -> userRepository.findByEmail(username)
-        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+    return email -> {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+        
+        if (user.getStatus() != EUserStatus.ACTIVE) {
+            throw new UserNotActiveException("User with email " + email + " is not active");
+        }
+        
+        return user;
+    };
   }
 
   /**
@@ -84,7 +95,7 @@ public class ApplicationConfig {
    *         updated_by fields of entities.
    */
   @Bean
-  AuditorAware<UUID> auditorProvider() {
+  AuditorAware<String> auditorProvider() {
     return applicationAuditAware;
   }
 

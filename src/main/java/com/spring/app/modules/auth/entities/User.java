@@ -50,7 +50,7 @@ public class User extends BaseEntity implements UserDetails {
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   @Builder.Default
-  private EUserStatus status = EUserStatus.SUSPENDED;
+  private EUserStatus status = EUserStatus.PENDING;
 
   @Override
   public Collection<? extends GrantedAuthority> getAuthorities() {

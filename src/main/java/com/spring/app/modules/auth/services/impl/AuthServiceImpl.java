@@ -15,21 +15,23 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.common.response.BaseResponse;
+import com.spring.app.enums.EUserStatus;
+import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
 import com.spring.app.exceptions.ResourceNotFoundException;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
-import com.spring.app.modules.auth.dto.response.LoginResponseDto;
-import com.spring.app.modules.auth.dto.response.RegisterResponseDto;
-import com.spring.app.modules.auth.dto.response.TokenResponseDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
-import com.spring.app.modules.auth.mapper.UserMapper;
+import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
-import com.spring.app.shared.services.JwtServiceInterface;
+import com.spring.app.shared.interfaces.JwtServiceInterface;
+import com.spring.app.shared.interfaces.MailServiceInterface;
+import com.spring.app.utils.JwtFunctionUtil;
+import com.spring.app.utils.OtpFunctionUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -40,69 +42,115 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AuthServiceImpl implements AuthServiceInterface {
 
+  private static final int TIME_OTP_EXPIRATION = 3 * 60 * 1000; // 3 minutes
+
   @Value("${application.security.jwt.refresh-token.expiration}")
   private long refreshExpiration;
+
+  @Value("${spring.profiles.active}")
+  private String activeProfile;
 
   private final UserRepository userRepository;
   private final RefreshTokenRepository refreshTokenRepository;
   private final JwtServiceInterface jwtService;
   private final PasswordEncoder passwordEncoder;
   private final AuthenticationManager authenticationManager;
-  private final UserMapper userMapper;
+  private final AuthMapper authMapper;
+  private final JwtFunctionUtil jwtFunction;
+  private final OtpFunctionUtil otpFunction;
+  private final MailServiceInterface mailService;
 
   @Override
   public ResponseEntity<BaseResponse> register(RegisterRequestDto dto) {
-    validateEmailUniqueness(dto.getEmail());
+    String emailRegister = dto.getEmail();
+    validateEmailUniqueness(emailRegister);
 
-    User newUser = userMapper.registerRequestDtoToUser(dto);
+    Boolean isDevMode = activeProfile.equals("dev");
+
+    if (!isDevMode) {
+      String otp = otpFunction.generateOtp();
+      otpFunction.storeOtp(emailRegister, otp, TIME_OTP_EXPIRATION);
+      try {
+        mailService.sendOtpEmail(emailRegister, otp);
+      } catch (Exception e) {
+        log.error("Failed to send OTP email", e);
+        throw new BadRequestException("Failed to send OTP email");
+      }
+    }
+
+    User newUser = User.builder()
+        .email(emailRegister)
+        .password(dto.getPassword())
+        .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING)
+        .fullName(dto.getFullName())
+        .build();
     newUser.setPassword(passwordEncoder.encode(dto.getPassword()));
     userRepository.save(newUser);
 
-    var response = RegisterResponseDto.builder()
-        .email(newUser.getEmail())
-        .build();
+    var response = authMapper.userToRegisterResponseDto(newUser);
 
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(BaseResponse.success("User registered successfully", HttpStatus.CREATED, response));
   }
+  
+  @Override
+  public ResponseEntity<?> resendOtp(String email) {
+    User user = userRepository.findByEmail(email)
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+
+    if (user.getStatus() != EUserStatus.PENDING) {
+      throw new BadRequestException("User is not in pending status, cannot resend OTP");
+    }
+
+    String otp = otpFunction.generateOtp();
+    otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION);
+
+    try {
+      mailService.sendOtpEmail(email, otp);
+    } catch (Exception e) {
+      log.error("Failed to send OTP email", e);
+      throw new BadRequestException("Failed to send OTP email");
+    }
+
+    return ResponseEntity.ok(BaseResponse.success("OTP resent successfully"));
+  }
 
   @Override
-  public ResponseEntity<BaseResponse> login(LoginRequestDto dto) {
+  public ResponseEntity<?> login(LoginRequestDto dto) {
     User user = authenticate(dto.getEmail(), dto.getPassword());
 
     String accessToken = jwtService.generateToken(user);
     String refreshToken = createAndStoreRefreshToken(user);
 
-    var response = LoginResponseDto.builder()
-        .userResponseDto(userMapper.userToUserResponseDto(user))
-        .accessToken(accessToken)
-        .refreshToken(refreshToken)
-        .build();
+    var response = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
 
     return ResponseEntity.ok(BaseResponse.success("User logged in successfully", response));
   }
 
   @Override
-  public ResponseEntity<BaseResponse> logout(HttpServletRequest request) {
-    String token = extractTokenFromHeader(request);
+  public ResponseEntity<?> logout(HttpServletRequest request) {
+    String token = jwtFunction.extractTokenFromHeader(request);
+    if (token == null) {
+      throw new BadRequestException("Authorization header is missing or invalid");
+    }
 
-    String username = jwtService.extractUsername(token);
-    User user = userRepository.findByEmail(username)
+    String email = jwtService.extractUsername(token);
+    User user = userRepository.findByEmailAndStatus(email, EUserStatus.ACTIVE)
         .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
     revokeAllTokensForUser(user);
 
     SecurityContextHolder.clearContext();
-    return ResponseEntity.ok(BaseResponse.success("User logged out successfully", null));
+    return ResponseEntity.ok(BaseResponse.success("User logged out successfully"));
   }
 
   @Override
-  public ResponseEntity<BaseResponse> refreshToken(RefreshTokenDto dto) {
+  public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
     RefreshToken oldToken = refreshTokenRepository.findByToken(dto.getRefreshToken())
-        .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+        .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
 
     if (oldToken.isRevoked() || oldToken.getExpiryDate().isBefore(Instant.now())) {
-      throw new BadCredentialsException("Token is revoked or expired");
+      throw new BadRequestException("Token is revoked or expired");
     }
 
     oldToken.setRevoked(true);
@@ -112,16 +160,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
     String accessToken = jwtService.generateToken(user);
     String newRefreshToken = createAndStoreRefreshToken(user);
 
-    var tokenResponse = TokenResponseDto.builder()
-        .accessToken(accessToken)
-        .refreshToken(newRefreshToken)
-        .build();
+    var response = authMapper.newTokenToTokenResponseDto(accessToken, newRefreshToken);
 
-    return ResponseEntity.ok(BaseResponse.success("Token refreshed successfully", tokenResponse));
+    return ResponseEntity.ok(BaseResponse.success("Token refreshed successfully", response));
   }
 
   private void validateEmailUniqueness(String email) {
-    if (userRepository.existsByEmail(email)) {
+    if (userRepository.existsByEmailAndStatus(email, EUserStatus.ACTIVE)) {
       throw new ConflictException("Email already exists");
     }
   }
@@ -135,23 +180,11 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private String createAndStoreRefreshToken(User user) {
     String refreshToken = jwtService.generateRefreshToken(user);
 
-    RefreshToken tokenEntity = RefreshToken.builder()
-        .user(user)
-        .token(refreshToken)
-        .expiryDate(Instant.now().plusMillis(refreshExpiration))
-        .isRevoked(false)
-        .build();
+    RefreshToken tokenEntity = authMapper.userToRefreshToken(user, refreshToken,
+        Instant.now().plusMillis(refreshExpiration));
 
     refreshTokenRepository.save(tokenEntity);
     return refreshToken;
-  }
-
-  private String extractTokenFromHeader(HttpServletRequest request) {
-    String header = request.getHeader("Authorization");
-    if (header == null || !header.startsWith("Bearer ")) {
-      throw new BadCredentialsException("Access token not found");
-    }
-    return header.substring(7);
   }
 
   private void revokeAllTokensForUser(User user) {
@@ -159,4 +192,5 @@ public class AuthServiceImpl implements AuthServiceInterface {
     tokens.forEach(t -> t.setRevoked(true));
     refreshTokenRepository.saveAll(tokens);
   }
+
 }

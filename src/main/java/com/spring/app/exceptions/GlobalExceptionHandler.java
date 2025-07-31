@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.transaction.TransactionSystemException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
@@ -67,7 +69,8 @@ public class GlobalExceptionHandler {
    * messages.
    */
   @ExceptionHandler(MethodArgumentNotValidException.class)
-  public ResponseEntity<BaseResponse<Void>> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+  public ResponseEntity<BaseResponse<Void>> handleValidation(MethodArgumentNotValidException ex,
+      HttpServletRequest request) {
     String message = ex.getBindingResult()
         .getFieldErrors()
         .stream()
@@ -85,9 +88,37 @@ public class GlobalExceptionHandler {
    * message that indicates that the username or password were invalid.
    */
   @ExceptionHandler(BadCredentialsException.class)
-  public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex, HttpServletRequest request) {
+  public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex,
+      HttpServletRequest request) {
+    if (ex.getCause() instanceof UsernameNotFoundException) {
+      log.error("Bad credentials at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
+      return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid username or password");
+    }
     log.error("Bad credentials at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
-    return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid username or password");
+    return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage());
+  }
+
+  /**
+   * Handles exceptions of type {@link InternalAuthenticationServiceException}.
+   * These are thrown when there is a problem with the internal authentication
+   * service. If the cause of the exception is a {@link UserNotActiveException},
+   * the response will have a status of {@link HttpStatus#FORBIDDEN} and a message
+   * indicating that the user account is not active. Otherwise, the response will
+   * have a status of {@link HttpStatus#UNAUTHORIZED} and a message indicating
+   * that the authentication failed.
+   *
+   * @param ex The exception to handle.
+   * @return A {@link ResponseEntity} with an appropriate status and error
+   *         message.
+   */
+  @ExceptionHandler(InternalAuthenticationServiceException.class)
+  public ResponseEntity<BaseResponse<Void>> handleInternalAuthenticationServiceException(
+      InternalAuthenticationServiceException ex) {
+    if (ex.getCause() instanceof UserNotActiveException) {
+      log.error("User not active: {}", ex.getMessage());
+      return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+    return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Authentication failed: " + ex.getMessage());
   }
 
   /**
@@ -165,7 +196,8 @@ public class GlobalExceptionHandler {
    *         {@link HttpStatus#INTERNAL_SERVER_ERROR} and an error message.
    */
   @ExceptionHandler(MessagingException.class)
-  public ResponseEntity<BaseResponse<Void>> handleMessagingException(MessagingException ex, HttpServletRequest request) {
+  public ResponseEntity<BaseResponse<Void>> handleMessagingException(MessagingException ex,
+      HttpServletRequest request) {
     log.error("Messaging exception at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Send email error: " + ex.getMessage());
   }
