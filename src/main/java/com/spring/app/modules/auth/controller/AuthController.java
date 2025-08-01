@@ -13,7 +13,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-import org.apache.coyote.BadRequestException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,7 +51,7 @@ public class AuthController {
 
   @Operation(summary = "Refresh your token", description = "Refresh your token")
   @PostMapping("/refresh-token")
-  public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenDto dto) throws BadRequestException {
+  public ResponseEntity<?> refresh(@Valid @RequestBody RefreshTokenDto dto) {
     return authService.refreshToken(dto);
   }
 
