@@ -12,6 +12,7 @@ public class WhitelistUrlConstant {
       "/swagger-resources/**",
       "/swagger-ui/**",
       "/swagger-ui.html",
+      "/actuator/**",
   };
 
 }

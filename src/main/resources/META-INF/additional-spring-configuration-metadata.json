@@ -1,19 +1,27 @@
-{
-  "properties": [
-    {
-      "name": "application.security.jwt.secret-key",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.secret-key'"
-    },
-    {
-      "name": "application.security.jwt.expiration",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.expiration'"
-    },
-    {
-      "name": "application.security.jwt.refresh-token.expiration",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.refresh-token.expiration'"
-    }
-  ]
-}
+{"properties": [
+  {
+    "name": "application.security.jwt.secret-key",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.secret-key'"
+  },
+  {
+    "name": "application.security.jwt.expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.expiration'"
+  },
+  {
+    "name": "application.security.jwt.refresh-token.expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.refresh-token.expiration'"
+  },
+  {
+    "name": "spring.file.storage.upload-dir",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.file.storage.upload-dir'"
+  },
+  {
+    "name": "spring.file.upload-dir",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.file.upload-dir'"
+  }
+]}

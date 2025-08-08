@@ -3,25 +3,23 @@ package com.spring.app.shared.services;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
+import com.spring.app.configs.properties.MailProperties;
 import com.spring.app.shared.interfaces.MailServiceInterface;
 import com.spring.app.templates.HtmlTemplateOTPBuilder;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import lombok.RequiredArgsConstructor;
 
 @Service
+@RequiredArgsConstructor
 public class MailService implements MailServiceInterface {
 
-  @Value("${spring.mail.app}")
-  private String mailApp;
-
-  @Value("${spring.mail.from}")
-  private String mailFrom;
+  private final MailProperties mailProperties;
 
   @Autowired
   private JavaMailSender mailSender;
@@ -32,9 +30,9 @@ public class MailService implements MailServiceInterface {
     MimeMessage message = mailSender.createMimeMessage();
     MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
     helper.setTo(to);
-    helper.setSubject(String.format("Your OTP Code from %s", mailApp));
+    helper.setSubject(String.format("Your OTP Code from %s", mailProperties.getApp()));
     helper.setText(htmlContent, true);
-    helper.setFrom(mailFrom);
+    helper.setFrom(mailProperties.getFrom());
 
     mailSender.send(message);
   }
@@ -47,7 +45,7 @@ public class MailService implements MailServiceInterface {
     helper.setTo(to);
     helper.setSubject(subject);
     helper.setText(content, isHtml);
-    helper.setFrom(mailFrom);
+    helper.setFrom(mailProperties.getFrom());
 
     mailSender.send(message);
   }

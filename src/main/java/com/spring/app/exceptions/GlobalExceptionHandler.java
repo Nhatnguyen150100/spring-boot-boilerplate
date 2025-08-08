@@ -15,6 +15,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
 import com.spring.app.common.response.BaseResponse;
+import com.spring.app.common.response.ResponseBuilder;
 
 import jakarta.mail.MessagingException;
 
@@ -53,6 +54,19 @@ public class GlobalExceptionHandler {
     return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
   }
 
+  /**
+   * Handles exceptions of type
+   * {@link ConflictException}. These are thrown when a resource conflict
+   * occurs (e.g. a resource with the same name already exists). The response
+   * will have a status of {@link HttpStatus#CONFLICT} and the message of the
+   * exception.
+   *
+   * @param ex      The exception to handle.
+   * @param request The current HTTP request.
+   * @return A {@link ResponseEntity} with a status of
+   *         {@link HttpStatus#CONFLICT} and the error message of the
+   *         exception.
+   */
   @ExceptionHandler(ConflictException.class)
   public ResponseEntity<BaseResponse<Void>> handleConflictException(ConflictException ex, HttpServletRequest request) {
     log.error("Conflict at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
@@ -81,6 +95,24 @@ public class GlobalExceptionHandler {
   }
 
   /**
+   * Handles exceptions of type {@link UsernameNotFoundException}. These are
+   * thrown when a user is not found in the system. The response will have a
+   * status of {@link HttpStatus#NOT_FOUND} and a message indicating that the
+   * user was not found.
+   *
+   * @param ex      The exception to handle.
+   * @param request The current HTTP request.
+   * @return A {@link ResponseEntity} with a status of
+   *         {@link HttpStatus#NOT_FOUND} and an error message.
+   */
+  @ExceptionHandler(UsernameNotFoundException.class)
+  public ResponseEntity<BaseResponse<Void>> handleUsernameNotFoundException(UsernameNotFoundException ex,
+      HttpServletRequest request) {
+    log.error("Username not found at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
+    return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage());
+  }
+
+  /**
    * Handles exceptions of type
    * {@link BadCredentialsException}. These are thrown when there is a problem
    * with the credentials provided (i.e. the username or password are invalid).
@@ -90,10 +122,6 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(BadCredentialsException.class)
   public ResponseEntity<BaseResponse<Void>> handleBadCredentials(BadCredentialsException ex,
       HttpServletRequest request) {
-    if (ex.getCause() instanceof UsernameNotFoundException) {
-      log.error("Bad credentials at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
-      return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid username or password");
-    }
     log.error("Bad credentials at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
     return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage());
   }
@@ -181,7 +209,8 @@ public class GlobalExceptionHandler {
    */
   @ExceptionHandler(Exception.class)
   public ResponseEntity<BaseResponse<Void>> handleGeneric(Exception ex, HttpServletRequest request) {
-    log.error("Unhandled exception at end point {} - Message: {}", request.getRequestURI(), ex.getMessage());
+    log.error("Unhandled exception at end point {} - Cause: {} - Message: {}", request.getRequestURI(), ex.getCause(),
+        ex.getMessage());
     return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Server error: " + ex.getMessage());
   }
 
@@ -211,8 +240,6 @@ public class GlobalExceptionHandler {
    *         specified status and error message.
    */
   private ResponseEntity<BaseResponse<Void>> buildErrorResponse(HttpStatus status, String message) {
-    return ResponseEntity
-        .status(status)
-        .body(BaseResponse.error(status, message));
+    return ResponseBuilder.error(status, message);
   }
 }

@@ -2,10 +2,13 @@ package com.spring.app.modules.user.services.impl;
 
 import java.util.UUID;
 
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
-import com.spring.app.common.response.BaseResponse;
+import com.spring.app.common.response.ResponseBuilder;
+import com.spring.app.configs.CacheConfig;
 import com.spring.app.exceptions.ResourceNotFoundException;
 import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.UserRepository;
@@ -27,17 +30,20 @@ public class UserService implements UserServiceInterface {
   private final UpdateUserMapper updateUserMapper;
 
   @Override
+  @Cacheable(value = CacheConfig.USER_PROFILE, key = "#userId")
   public ResponseEntity<?> getUserProfile(UUID userId) {
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userId));
 
     var response = userMapper.userToUserResponseDto(user);
 
-    return ResponseEntity.ok().body(BaseResponse.success("Get user profile successfully", response));
+    log.info("User profile retrieved successfully for userId: {}", userId);
+    return ResponseBuilder.success("Get user profile successfully", response);
   }
 
   @Override
   @Transactional
+  @CachePut(value = CacheConfig.USER_PROFILE, key = "#userId")
   public ResponseEntity<?> updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userId));
@@ -48,7 +54,8 @@ public class UserService implements UserServiceInterface {
 
     var response = userMapper.userToUserResponseDto(userRes);
 
-    return ResponseEntity.ok().body(BaseResponse.success("Update user profile successfully", response));
+    log.info("User profile updated successfully for userId: {}", userId);
+    return ResponseBuilder.success("Update user profile successfully", response);
   }
 
 }

@@ -39,7 +39,7 @@ public class ApplicationConfig {
   UserDetailsService userDetailsService() {
     return email -> {
         User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+            .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
         
         if (user.getStatus() != EUserStatus.ACTIVE) {
             throw new UserNotActiveException("User with email " + email + " is not active");

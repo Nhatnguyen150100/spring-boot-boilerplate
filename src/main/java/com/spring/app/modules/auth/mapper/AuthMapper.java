@@ -25,5 +25,6 @@ public interface AuthMapper {
 
   TokenResponseDto newTokenToTokenResponseDto(String accessToken, String refreshToken);
 
+  @Mapping(target = "isRevoked", constant = "false")
   RefreshToken userToRefreshToken(User user, String token, Instant expiryDate);
 }

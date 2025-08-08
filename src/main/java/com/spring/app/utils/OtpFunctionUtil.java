@@ -87,6 +87,16 @@ public class OtpFunctionUtil {
     return storedOtp != null && storedOtp.equals(otp) && validateOtp(otp);
   }
 
+
+  /**
+   * Removes the OTP from Redis after successful activation or validation.
+   *
+   * @param key The key under which the OTP is stored.
+   */
+  public void removeOtp(String key) {
+    deleteOtp(key);
+  }
+
   /**
    * Validates the OTP against a predefined pattern.
    *
