@@ -12,6 +12,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.common.response.ResponseBuilder;
@@ -269,5 +270,22 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @CacheEvict(value = CacheConfig.TOKENS_CACHE, key = "#token")
   public void evictCachedToken(String token) {
     log.info("Evicting cached token: {}", token);
+  }
+
+  @Override
+  public ResponseEntity<?> loginByGoogle(OAuth2User principal) {
+    if(principal == null) {
+      throw new BadRequestException("Invalid Google user");
+    }
+    String email = principal.getAttribute("email");
+    String name = principal.getAttribute("name");
+    String avatar = principal.getAttribute("picture");
+    String googleId = principal.getAttribute("sub");
+    log.info("email: {}, name: {}, avatar: {}, googleId: {}", email, name, avatar, googleId);
+    User user = getUserByEmail(email);
+    String accessToken = jwtService.generateToken(user);
+    String refreshToken = createAndStoreRefreshToken(user);
+    var response = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
+    return ResponseBuilder.success("Login successful", response);
   }
 }

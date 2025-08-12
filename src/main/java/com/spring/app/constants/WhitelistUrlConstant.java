@@ -1,6 +1,7 @@
 package com.spring.app.constants;
 
 public class WhitelistUrlConstant {
+
   public static final String[] PUBLIC_URLS = {
       "/auth/**"
   };
@@ -13,6 +14,7 @@ public class WhitelistUrlConstant {
       "/swagger-ui/**",
       "/swagger-ui.html",
       "/actuator/**",
+      "/oauth2/**"
   };
 
 }

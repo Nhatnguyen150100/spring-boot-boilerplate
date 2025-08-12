@@ -10,4 +10,6 @@ public interface UserServiceInterface {
   ResponseEntity<?> getUserProfile(UUID userId);
 
   ResponseEntity<?> updateUserProfile(UUID userId, UpdateUserDto updateUserDto);
+
+  
 }
