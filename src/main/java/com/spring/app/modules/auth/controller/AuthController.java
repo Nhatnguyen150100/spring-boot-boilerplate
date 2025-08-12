@@ -13,11 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 
 
 @RestController
@@ -52,12 +48,6 @@ public class AuthController {
   public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto) {
     return authService.login(dto);
   }
-  
-  // @Operation(summary = "Login with Google callback (redirect)", description = "Login with Google callback (This endpoint is only available for client side)")
-  // @GetMapping("/google/callback")
-  // public ResponseEntity<?> loginByGoogle(@AuthenticationPrincipal OAuth2User principal) {
-  //   return authService.loginByGoogle(principal);
-  // }
 
   @Operation(summary = "Refresh your token", description = "Refresh your token")
   @PostMapping("/refresh-token")
