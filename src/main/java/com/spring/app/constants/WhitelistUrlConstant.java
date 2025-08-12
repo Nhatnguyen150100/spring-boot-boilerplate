@@ -2,6 +2,9 @@ package com.spring.app.constants;
 
 public class WhitelistUrlConstant {
 
+  public static final String OAUTH2_LOGIN_URL = "/auth/oauth2/authorization";
+  public static final String OAUTH2_REDIRECT_URL = "/auth/oauth2/code/google";
+
   public static final String[] PUBLIC_URLS = {
       "/auth/**"
   };

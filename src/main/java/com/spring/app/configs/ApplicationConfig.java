@@ -38,14 +38,14 @@ public class ApplicationConfig {
   @Bean
   UserDetailsService userDetailsService() {
     return email -> {
-        User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
-        
-        if (user.getStatus() != EUserStatus.ACTIVE) {
-            throw new UserNotActiveException("User with email " + email + " is not active");
-        }
-        
-        return user;
+      var user = userRepository.findByEmail(email)
+          .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
+
+      if (user.getStatus() != EUserStatus.ACTIVE) {
+        throw new UserNotActiveException("User with email " + email + " is not active");
+      }
+
+      return user;
     };
   }
 
@@ -84,6 +84,15 @@ public class ApplicationConfig {
     UserDetailsService userDetailsService = userDetailsService();
     DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
     authProvider.setPasswordEncoder(passwordEncoder());
+    authProvider.setHideUserNotFoundExceptions(false); // To throw UsernameNotFoundException
+    authProvider.setPostAuthenticationChecks(user -> {
+      if (user instanceof User) {
+        User appUser = (User) user;
+        if (appUser.getStatus() != EUserStatus.ACTIVE) {
+          throw new UserNotActiveException("User with email " + appUser.getEmail() + " is not active");
+        }
+      }
+    });
     return authProvider;
   }
 
