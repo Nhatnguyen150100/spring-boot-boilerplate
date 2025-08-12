@@ -12,6 +12,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
+  /**
+   * Load user information from the OAuth2 provider.
+   *
+   * @param userRequest Contains the user request details from the OAuth2
+   *                    provider.
+   * @return The OAuth2 user containing the user information.
+   * @throws OAuth2AuthenticationException If there is a problem loading the user.
+   */
   @Override
   public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
     try {

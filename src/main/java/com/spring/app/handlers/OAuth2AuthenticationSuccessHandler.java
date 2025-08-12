@@ -31,6 +31,24 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
   private final AuthMapper authMapper;
   private final ObjectMapper objectMapper;
 
+  /**
+   * Handles the event of a successful OAuth2 authentication.
+   *
+   * <p>
+   * This method is invoked when an authentication attempt using OAuth2 is
+   * successful. It retrieves
+   * the OAuth2 user information from the authentication principal and writes the
+   * user's email as a JSON
+   * response. If no user information is available, it responds with an
+   * unauthorized error message.
+   *
+   * @param request        the HTTP request
+   * @param response       the HTTP response
+   * @param authentication the authentication object containing the OAuth2 user
+   *                       details
+   * @throws IOException if an input or output exception occurs
+   */
+
   @Override
   public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
       Authentication authentication) throws IOException {

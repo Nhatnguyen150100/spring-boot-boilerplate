@@ -17,6 +17,20 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class OAuth2AuthenticationFailureHandler implements AuthenticationFailureHandler {
 
+  /**
+   * Handles an authentication exception by writing an appropriate error response.
+   *
+   * <p>
+   * This method writes a JSON response with a status of
+   * {@link HttpStatus#UNAUTHORIZED} and a message indicating that the
+   * authentication failed.
+   *
+   * @param request   the HTTP request
+   * @param response  the HTTP response
+   * @param exception the exception to handle
+   * @throws IOException      if an I/O error occurs
+   * @throws ServletException if an error occurs during the handling process
+   */
   @Override
   public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
       AuthenticationException exception) throws IOException, ServletException {
