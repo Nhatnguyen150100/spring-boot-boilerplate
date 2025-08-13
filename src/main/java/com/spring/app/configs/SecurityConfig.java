@@ -36,10 +36,10 @@ public class SecurityConfig {
 
   private final JwtAuthenticatorFilter jwtAuthFilter;
   private final AuthenticationProvider authenticationProvider;
-  private final CustomAccessDeniedHandler customAccessDeniedHandler;
-  private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
   private final CorsConfigurationSource corsConfigurationSource;
   private final CustomOAuth2UserService customOAuth2UserService;
+  private final CustomAccessDeniedHandler customAccessDeniedHandler;
+  private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
   private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
   private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 

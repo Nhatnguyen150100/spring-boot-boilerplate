@@ -1,5 +1,7 @@
 package com.spring.app.modules.user.controller;
 
+import java.util.UUID;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,7 +35,10 @@ public class UserController {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
     var user = (User) auth.getPrincipal();
 
-    return userService.getUserProfile(user.getId());
+    UUID userId = user.getId();
+    log.info("User profile retrieved successfully for userId: {}", userId);
+
+    return userService.getUserProfile(userId);
   }
 
   @Operation(summary = "Update user profile", description = "Update the profile of the authenticated user")
@@ -42,6 +47,9 @@ public class UserController {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
     var user = (User) auth.getPrincipal();
 
-    return userService.updateUserProfile(user.getId(), updateUserDto);
+    UUID userId = user.getId();
+    log.info("User profile retrieved successfully for userId: {}", userId);
+
+    return userService.updateUserProfile(userId, updateUserDto);
   }
 }

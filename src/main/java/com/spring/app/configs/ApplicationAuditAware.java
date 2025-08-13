@@ -3,6 +3,7 @@ package com.spring.app.configs;
 import java.util.Optional;
 
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -19,6 +20,7 @@ public class ApplicationAuditAware implements AuditorAware<String> {
   private static final String SYSTEM_AUDITOR = "SYSTEM";
 
   @Override
+  @NonNull
   public Optional<String> getCurrentAuditor() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
