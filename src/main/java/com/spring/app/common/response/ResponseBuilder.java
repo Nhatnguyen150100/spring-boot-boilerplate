@@ -47,6 +47,10 @@ public class ResponseBuilder {
     return error(HttpStatus.CONFLICT, message);
   }
 
+  public static <T> ResponseEntity<BaseResponse<T>> tooManyRequest(String message) {
+    return error(HttpStatus.TOO_MANY_REQUESTS, message);
+  }
+
   public static <T> ResponseEntity<BaseResponse<T>> internalServerError(String message) {
     return error(HttpStatus.INTERNAL_SERVER_ERROR, message);
   }

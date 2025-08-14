@@ -1,15 +1,13 @@
 package com.spring.app.shared.services;
 
 import com.spring.app.configs.properties.RateLimitProperties;
+import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.exceptions.RateLimitExceededException;
+import com.spring.app.shared.interfaces.RedisServiceInterface;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
-
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -17,8 +15,12 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 public class RateLimitManagerService {
 
-  private final RedisTemplate<String, String> rateLimitRedisTemplate;
+  private final RedisServiceInterface redisService;
   private final RateLimitProperties rateLimitProperties;
+
+  private static final int DEFAULT_REQUESTS_PER_MINUTE = 60;
+  private static final int DEFAULT_REQUESTS_PER_HOUR = 3600;
+  private static final int DEFAULT_REQUESTS_PER_DAY = 86400;
 
   /**
    * Check rate limit for a specific endpoint type
@@ -27,9 +29,9 @@ public class RateLimitManagerService {
    * @param identifier   Unique identifier (IP, user ID, email, etc.)
    * @return true if allowed, false if rate limit exceeded
    */
-  public boolean checkRateLimit(String endpointType, String identifier) {
+  public boolean checkRateLimit(ERateLimitEndpoint endpointType, String identifier) {
     try {
-      RateLimitProperties.RateLimitConfig config = getConfigForType(endpointType);
+      RateLimitProperties.BaseRateLimitConfig config = getConfigForType(endpointType);
       if (config == null || !config.isEnabled()) {
         return true; // Rate limiting disabled for this type
       }
@@ -38,9 +40,9 @@ public class RateLimitManagerService {
       String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
       String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
 
-      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), 60) &&
-          checkRateLimit(hourKey, config.getRequestsPerHour(), 3600) &&
-          checkRateLimit(dayKey, config.getRequestsPerDay(), 86400);
+      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), DEFAULT_REQUESTS_PER_MINUTE) &&
+          checkRateLimit(hourKey, config.getRequestsPerHour(), DEFAULT_REQUESTS_PER_HOUR) &&
+          checkRateLimit(dayKey, config.getRequestsPerDay(), DEFAULT_REQUESTS_PER_DAY);
 
     } catch (Exception e) {
       log.error("Error checking rate limit for {} with identifier: {}", endpointType, identifier, e);
@@ -55,9 +57,9 @@ public class RateLimitManagerService {
    * @param identifier   Unique identifier
    * @throws RateLimitExceededException if rate limit exceeded
    */
-  public void checkRateLimitAndThrow(String endpointType, String identifier) {
+  public void checkRateLimitAndThrow(ERateLimitEndpoint endpointType, String identifier) {
     if (!checkRateLimit(endpointType, identifier)) {
-      RateLimitProperties.RateLimitConfig config = getConfigForType(endpointType);
+      RateLimitProperties.BaseRateLimitConfig config = getConfigForType(endpointType);
       String message = String.format("Rate limit exceeded for %s. Max %d requests per minute, %d per hour, %d per day",
           endpointType, config.getRequestsPerMinute(), config.getRequestsPerHour(), config.getRequestsPerDay());
       throw new RateLimitExceededException(message);
@@ -68,27 +70,42 @@ public class RateLimitManagerService {
    * Get remaining requests for a specific endpoint type
    * 
    * @param endpointType Type of endpoint
+   * @param time         Time period (minute, hour, day)
    * @param identifier   Unique identifier
-   * @return Number of remaining requests for the current minute
+   * @return Number of remaining requests for the current time
    */
-  public long getRemainingRequests(String endpointType, String identifier) {
+  public long getRemainingRequests(ERateLimitEndpoint endpointType, String time, String identifier) {
     try {
-      RateLimitProperties.RateLimitConfig config = getConfigForType(endpointType);
+      if (time != "minute" && time != "hour" && time != "day") {
+        log.warn("Invalid time period: {}. Defaulting to minute.", time);
+        time = "minute"; // Default to minute if invalid
+      }
+
+      RateLimitProperties.BaseRateLimitConfig config = getConfigForType(endpointType);
       if (config == null)
         return -1;
 
-      String minuteKey = String.format("rate_limit:%s:minute:%s", endpointType, identifier);
-      String currentCount = rateLimitRedisTemplate.opsForValue().get(minuteKey);
+      int windowSeconds;
+      if (time == "minute") {
+        windowSeconds = config.getRequestsPerMinute();
+      } else if (time == "hour") {
+        windowSeconds = config.getRequestsPerHour();
+      } else {
+        windowSeconds = config.getRequestsPerDay();
+      }
+
+      String timeKey = String.format("rate_limit:%s:%s:%s", endpointType, time, identifier);
+      String currentCount = (String) redisService.getValue(timeKey);
 
       if (currentCount == null) {
-        return config.getRequestsPerMinute();
+        return windowSeconds;
       }
 
       int count = Integer.parseInt(currentCount);
-      return Math.max(0, config.getRequestsPerMinute() - count);
+      return Math.max(0, windowSeconds - count);
 
     } catch (Exception e) {
-      log.error("Error getting remaining requests for {} with identifier: {}", endpointType, identifier, e);
+      log.error("Error getting remaining requests for {} in {} with identifier: {}", endpointType, time, identifier, e);
       return -1;
     }
   }
@@ -105,9 +122,9 @@ public class RateLimitManagerService {
       String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
       String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
 
-      rateLimitRedisTemplate.delete(minuteKey);
-      rateLimitRedisTemplate.delete(hourKey);
-      rateLimitRedisTemplate.delete(dayKey);
+      redisService.delete(minuteKey);
+      redisService.delete(hourKey);
+      redisService.delete(dayKey);
 
       log.info("Rate limit reset for {} with identifier: {}", endpointType, identifier);
     } catch (Exception e) {
@@ -115,38 +132,9 @@ public class RateLimitManagerService {
     }
   }
 
-  /**
-   * Get client IP address from current request
-   * 
-   * @return Client IP address
-   */
-  public String getClientIpAddress() {
-    try {
-      ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-      if (attributes != null) {
-        HttpServletRequest request = attributes.getRequest();
-
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
-          return xForwardedFor.split(",")[0].trim();
-        }
-
-        String xRealIp = request.getHeader("X-Real-IP");
-        if (xRealIp != null && !xRealIp.isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
-          return xRealIp;
-        }
-
-        return request.getRemoteAddr();
-      }
-    } catch (Exception e) {
-      log.error("Error getting client IP address", e);
-    }
-    return "unknown";
-  }
-
   private boolean checkRateLimit(String key, int maxRequests, int windowSeconds) {
     try {
-      String currentCount = rateLimitRedisTemplate.opsForValue().get(key);
+      String currentCount = (String) redisService.getValue(key);
       int count = currentCount == null ? 0 : Integer.parseInt(currentCount);
 
       if (count >= maxRequests) {
@@ -155,7 +143,7 @@ public class RateLimitManagerService {
       }
 
       // Increment counter
-      rateLimitRedisTemplate.opsForValue().set(key, String.valueOf(count + 1), windowSeconds, TimeUnit.SECONDS);
+      redisService.setValue(key, String.valueOf(count + 1), windowSeconds, TimeUnit.SECONDS);
       return true;
 
     } catch (Exception e) {
@@ -164,15 +152,15 @@ public class RateLimitManagerService {
     }
   }
 
-  private RateLimitProperties.RateLimitConfig getConfigForType(String endpointType) {
-    switch (endpointType.toLowerCase()) {
-      case "auth":
+  private RateLimitProperties.BaseRateLimitConfig getConfigForType(ERateLimitEndpoint endpointType) {
+    switch (endpointType) {
+      case AUTH:
         return rateLimitProperties.getAuth();
-      case "upload":
+      case UPLOAD:
         return rateLimitProperties.getUpload();
-      case "api":
+      case API:
         return rateLimitProperties.getApi();
-      case "global":
+      case GLOBAL:
         return rateLimitProperties.getGlobal();
       default:
         log.warn("Unknown endpoint type: {}", endpointType);
