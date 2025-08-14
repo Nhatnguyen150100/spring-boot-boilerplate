@@ -21,6 +21,7 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import com.spring.app.constants.WhitelistUrlConstant;
 import com.spring.app.exceptions.CustomAuthenticationEntryPoint;
 import com.spring.app.filter.JwtAuthenticatorFilter;
+import com.spring.app.filter.RateLimitFilter;
 import com.spring.app.handlers.CustomAccessDeniedHandler;
 import com.spring.app.handlers.OAuth2AuthenticationFailureHandler;
 import com.spring.app.handlers.OAuth2AuthenticationSuccessHandler;
@@ -35,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class SecurityConfig {
 
   private final JwtAuthenticatorFilter jwtAuthFilter;
+  private final RateLimitFilter rateLimitFilter;
   private final AuthenticationProvider authenticationProvider;
   private final CorsConfigurationSource corsConfigurationSource;
   private final CustomOAuth2UserService customOAuth2UserService;
@@ -80,6 +82,7 @@ public class SecurityConfig {
         .sessionManagement(session -> sessionManagement(session))
         .authorizeHttpRequests(auth -> authorizeHttpRequests(auth))
         .authenticationProvider(authenticationProvider)
+        .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
         .oauth2Login(oauth2 -> oauth2Login(oauth2))
         .build();

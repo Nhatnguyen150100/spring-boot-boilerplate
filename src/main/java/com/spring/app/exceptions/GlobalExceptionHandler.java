@@ -232,6 +232,25 @@ public class GlobalExceptionHandler {
   }
 
   /**
+   * Handles exceptions of type {@link RateLimitExceededException}. These are
+   * thrown
+   * when a user exceeds the rate limit. The response will have a status of
+   * {@link HttpStatus#TOO_MANY_REQUESTS} and a message indicating that the rate
+   * limit was exceeded.
+   * 
+   * @param ex      The exception to handle.
+   * @param request The current HTTP request.
+   * @return A {@link ResponseEntity} with a status of
+   *         {@link HttpStatus#TOO_MANY_REQUESTS} and an error message.
+   */
+  @ExceptionHandler(RateLimitExceededException.class)
+  public ResponseEntity<BaseResponse<Void>> handleRateLimitExceeded(RateLimitExceededException ex,
+      HttpServletRequest request) {
+    log.warn("Rate limit exceeded at end point: {} - Message: {}", request.getRequestURI(), ex.getMessage());
+    return buildErrorResponse(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage());
+  }
+
+  /**
    * Builds an error response with the specified HTTP status and message.
    *
    * @param status  The HTTP status to set for the response.

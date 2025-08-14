@@ -28,5 +28,125 @@
     "name": "application.frontend-url",
     "type": "java.lang.String",
     "description": "A description for 'application.frontend-url'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.auth.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.auth.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.enabled'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.global.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.enabled'"
+  },
+  {
+    "name": "app.rate-limit.global.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.upload.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.api.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.api.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.enabled'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.api.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.enabled'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.upload.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.enabled'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
+  },
+  {
+    "name": "spring.mail.app",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.app'"
+  },
+  {
+    "name": "spring.mail.from",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.from'"
   }
 ]}
