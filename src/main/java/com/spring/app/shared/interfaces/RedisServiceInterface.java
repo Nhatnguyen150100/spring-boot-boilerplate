@@ -10,4 +10,12 @@ public interface RedisServiceInterface {
   public void delete(String key);
 
   public boolean hasKey(String key);
+
+  public void setRateLimitValue(String key, Object value, long duration, TimeUnit unit);
+
+  public Object getRateLimitValue(String key);
+
+  public void deleteRateLimitKey(String key);
+
+  public boolean hasRateLimitKey(String key);
 }

@@ -95,7 +95,7 @@ public class RateLimitManagerService {
       }
 
       String timeKey = String.format("rate_limit:%s:%s:%s", endpointType, time, identifier);
-      String currentCount = (String) redisService.getValue(timeKey);
+      String currentCount = (String) redisService.getRateLimitValue(timeKey);
 
       if (currentCount == null) {
         return windowSeconds;
@@ -122,9 +122,9 @@ public class RateLimitManagerService {
       String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
       String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
 
-      redisService.delete(minuteKey);
-      redisService.delete(hourKey);
-      redisService.delete(dayKey);
+      redisService.deleteRateLimitKey(minuteKey);
+      redisService.deleteRateLimitKey(hourKey);
+      redisService.deleteRateLimitKey(dayKey);
 
       log.info("Rate limit reset for {} with identifier: {}", endpointType, identifier);
     } catch (Exception e) {
@@ -134,7 +134,7 @@ public class RateLimitManagerService {
 
   private boolean checkRateLimit(String key, int maxRequests, int windowSeconds) {
     try {
-      String currentCount = (String) redisService.getValue(key);
+      String currentCount = (String) redisService.getRateLimitValue(key);
       int count = currentCount == null ? 0 : Integer.parseInt(currentCount);
 
       if (count >= maxRequests) {
@@ -143,7 +143,7 @@ public class RateLimitManagerService {
       }
 
       // Increment counter
-      redisService.setValue(key, String.valueOf(count + 1), windowSeconds, TimeUnit.SECONDS);
+      redisService.setRateLimitValue(key, String.valueOf(count + 1), windowSeconds, TimeUnit.SECONDS);
       return true;
 
     } catch (Exception e) {
