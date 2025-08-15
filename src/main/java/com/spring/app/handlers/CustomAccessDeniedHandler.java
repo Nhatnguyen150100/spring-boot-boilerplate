@@ -8,14 +8,20 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.spring.app.common.response.BaseResponse;
+import com.spring.app.common.response.ResponseBuilder;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Slf4j
+@RequiredArgsConstructor
 public class CustomAccessDeniedHandler implements AccessDeniedHandler {
+
+  private final ObjectMapper objectMapper;
 
   /**
    * Handles an access denied exception by writing an appropriate error response.
@@ -36,13 +42,14 @@ public class CustomAccessDeniedHandler implements AccessDeniedHandler {
       AccessDeniedException accessDeniedException)
       throws IOException, ServletException {
 
-    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+    var res = ResponseBuilder
+        .forbidden("You do not have permission to access this resource. Please use a other account.");
+
+    int status = res.getStatusCode().value();
+
+    response.setStatus(status);
     response.setContentType("application/json");
 
-    BaseResponse<Void> body = BaseResponse.error(HttpStatus.FORBIDDEN,
-        "You do not have permission to access this resource");
-
-    ObjectMapper mapper = new ObjectMapper();
-    response.getWriter().write(mapper.writeValueAsString(body));
+    response.getWriter().write(objectMapper.writeValueAsString(res.getBody()));
   }
 }

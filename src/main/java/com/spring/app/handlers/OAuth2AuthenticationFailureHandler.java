@@ -7,15 +7,22 @@ import org.springframework.http.HttpStatus;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.spring.app.common.response.ResponseBuilder;
+
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class OAuth2AuthenticationFailureHandler implements AuthenticationFailureHandler {
+
+  private final ObjectMapper objectMapper;
 
   /**
    * Handles an authentication exception by writing an appropriate error response.
@@ -33,10 +40,14 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
    */
   @Override
   public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
-      AuthenticationException exception) throws IOException, ServletException {
-    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+      AuthenticationException exception) throws IOException, ServletException {        
+    var res = ResponseBuilder.badRequest("Authentication failed: " + exception.getMessage());
+
+    int status = res.getStatusCode().value();
+    response.setStatus(status);
     response.setContentType("application/json");
-    response.getWriter().write("{\"error\": \"Authentication failed: " + exception.getMessage() + "\"}");
+
+    response.getWriter().write(objectMapper.writeValueAsString(res.getBody()));
   }
 
 }

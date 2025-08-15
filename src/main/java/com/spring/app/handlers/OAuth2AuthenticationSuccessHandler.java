@@ -61,7 +61,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     String email = oauth2User.getAttribute("email");
     if (email == null || email.isBlank()) {
-      response.setStatus(HttpStatus.BAD_REQUEST.value());
+      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
       response.setContentType("application/json");
       response.getWriter().write("{\"error\": \"OAuth2 provider did not return an email\"}");
       return;
@@ -76,7 +76,7 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
     var loginResponse = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
 
     response.setContentType("application/json");
-    response.setStatus(HttpStatus.OK.value());
+    response.setStatus(HttpServletResponse.SC_OK);
     objectMapper.writeValue(response.getWriter(), ResponseBuilder.success("Login successful", loginResponse));
 
     log.info("OAuth2 login success for user: {}", email);

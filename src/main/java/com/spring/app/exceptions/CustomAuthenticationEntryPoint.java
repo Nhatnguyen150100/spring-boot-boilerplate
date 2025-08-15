@@ -2,20 +2,25 @@ package com.spring.app.exceptions;
 
 import java.io.IOException;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.spring.app.common.response.BaseResponse;
+import com.spring.app.common.response.ResponseBuilder;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@Slf4j
+@RequiredArgsConstructor
 public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+  private final ObjectMapper objectMapper;
 
   /**
    * Handles the commencement of an authentication scheme by sending an
@@ -34,17 +39,18 @@ public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint 
    * @throws IOException      if an I/O error occurs
    * @throws ServletException if an error occurs during the handling process
    */
-
   @Override
   public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException)
       throws IOException, ServletException {
-    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+
+    var res = ResponseBuilder.unauthorized("Unauthorized access. Please login to continue.");
+
+    int status = res.getStatusCode().value();
+
+    response.setStatus(status);
     response.setContentType("application/json");
 
-    BaseResponse<Void> body = BaseResponse.error(HttpStatus.UNAUTHORIZED, "Unauthorized access");
-
-    ObjectMapper mapper = new ObjectMapper();
-    response.getWriter().write(mapper.writeValueAsString(body));
+    response.getWriter().write(objectMapper.writeValueAsString(res.getBody()));
   }
 
 }
