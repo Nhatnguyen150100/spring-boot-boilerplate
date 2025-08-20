@@ -1,164 +1,177 @@
-{
-  "properties": [
-    {
-      "name": "application.security.jwt.secret-key",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.secret-key'"
-    },
-    {
-      "name": "application.security.jwt.expiration",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.expiration'"
-    },
-    {
-      "name": "application.security.jwt.refresh-token.expiration",
-      "type": "java.lang.String",
-      "description": "A description for 'application.security.jwt.refresh-token.expiration'"
-    },
-    {
-      "name": "spring.file.storage.upload-dir",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.file.storage.upload-dir'"
-    },
-    {
-      "name": "spring.file.upload-dir",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.file.upload-dir'"
-    },
-    {
-      "name": "application.frontend-url",
-      "type": "java.lang.String",
-      "description": "A description for 'application.frontend-url'"
-    },
-    {
-      "name": "app.rate-limit.auth.requests-per-minute",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.auth.requests-per-minute'"
-    },
-    {
-      "name": "app.rate-limit.auth.burst-capacity",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.auth.burst-capacity'"
-    },
-    {
-      "name": "app.rate-limit.auth.enabled",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.auth.enabled'"
-    },
-    {
-      "name": "app.rate-limit.global.requests-per-minute",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.global.requests-per-minute'"
-    },
-    {
-      "name": "app.rate-limit.global.enabled",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.global.enabled'"
-    },
-    {
-      "name": "app.rate-limit.global.burst-capacity",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.global.burst-capacity'"
-    },
-    {
-      "name": "app.rate-limit.global.requests-per-hour",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.global.requests-per-hour'"
-    },
-    {
-      "name": "app.rate-limit.global.requests-per-day",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.global.requests-per-day'"
-    },
-    {
-      "name": "app.rate-limit.upload.requests-per-minute",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
-    },
-    {
-      "name": "app.rate-limit.upload.burst-capacity",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.burst-capacity'"
-    },
-    {
-      "name": "app.rate-limit.api.burst-capacity",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.burst-capacity'"
-    },
-    {
-      "name": "app.rate-limit.api.enabled",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.enabled'"
-    },
-    {
-      "name": "app.rate-limit.api.requests-per-day",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.requests-per-day'"
-    },
-    {
-      "name": "app.rate-limit.api.requests-per-hour",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.requests-per-hour'"
-    },
-    {
-      "name": "app.rate-limit.api.requests-per-minute",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.requests-per-minute'"
-    },
-    {
-      "name": "app.rate-limit.api.enabled",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.api.enabled'"
-    },
-    {
-      "name": "app.rate-limit.auth.requests-per-hour",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.auth.requests-per-hour'"
-    },
-    {
-      "name": "app.rate-limit.auth.requests-per-day",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.auth.requests-per-day'"
-    },
-    {
-      "name": "app.rate-limit.upload.requests-per-day",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.requests-per-day'"
-    },
-    {
-      "name": "app.rate-limit.upload.requests-per-hour",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.requests-per-hour'"
-    },
-    {
-      "name": "app.rate-limit.upload.enabled",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.enabled'"
-    },
-    {
-      "name": "app.rate-limit.upload.requests-per-minute",
-      "type": "java.lang.String",
-      "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
-    },
-    {
-      "name": "spring.mail.app",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.mail.app'"
-    },
-    {
-      "name": "spring.mail.from",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.mail.from'"
-    },
-    {
-      "name": "spring.mail.start-tls",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.mail.start-tls'"
-    },
-    {
-      "name": "spring.mail.smtp-auth",
-      "type": "java.lang.String",
-      "description": "A description for 'spring.mail.smtp-auth'"
-    }
-  ]
-}
+{"properties": [
+  {
+    "name": "application.security.jwt.secret-key",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.secret-key'"
+  },
+  {
+    "name": "application.security.jwt.expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.expiration'"
+  },
+  {
+    "name": "application.security.jwt.refresh-token.expiration",
+    "type": "java.lang.String",
+    "description": "A description for 'application.security.jwt.refresh-token.expiration'"
+  },
+  {
+    "name": "spring.file.storage.upload-dir",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.file.storage.upload-dir'"
+  },
+  {
+    "name": "spring.file.upload-dir",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.file.upload-dir'"
+  },
+  {
+    "name": "application.frontend-url",
+    "type": "java.lang.String",
+    "description": "A description for 'application.frontend-url'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.auth.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.auth.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.enabled'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.global.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.enabled'"
+  },
+  {
+    "name": "app.rate-limit.global.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.global.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.global.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.upload.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.api.burst-capacity",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.burst-capacity'"
+  },
+  {
+    "name": "app.rate-limit.api.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.enabled'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.api.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.requests-per-minute'"
+  },
+  {
+    "name": "app.rate-limit.api.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.api.enabled'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.auth.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.auth.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-day",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-day'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-hour",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-hour'"
+  },
+  {
+    "name": "app.rate-limit.upload.enabled",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.enabled'"
+  },
+  {
+    "name": "app.rate-limit.upload.requests-per-minute",
+    "type": "java.lang.String",
+    "description": "A description for 'app.rate-limit.upload.requests-per-minute'"
+  },
+  {
+    "name": "spring.mail.app",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.app'"
+  },
+  {
+    "name": "spring.mail.from",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.from'"
+  },
+  {
+    "name": "spring.mail.start-tls",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.start-tls'"
+  },
+  {
+    "name": "spring.mail.smtp-auth",
+    "type": "java.lang.String",
+    "description": "A description for 'spring.mail.smtp-auth'"
+  },
+  {
+    "name": "management.task.execution.pool.core-size",
+    "type": "java.lang.String",
+    "description": "A description for 'management.task.execution.pool.core-size'"
+  },
+  {
+    "name": "management.cache.type",
+    "type": "java.lang.String",
+    "description": "A description for 'management.cache.type'"
+  },
+  {
+    "name": "management.cache.redis.time-to-live",
+    "type": "java.lang.String",
+    "description": "A description for 'management.cache.redis.time-to-live'"
+  }
+]}
