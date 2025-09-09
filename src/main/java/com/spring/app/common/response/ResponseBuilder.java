@@ -1,7 +1,11 @@
 package com.spring.app.common.response;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
+import com.spring.app.common.pagination.PaginationDto;
 
 public class ResponseBuilder {
 
@@ -11,6 +15,16 @@ public class ResponseBuilder {
 
   public static <T> ResponseEntity<BaseResponse<T>> success(String message, T data) {
     return ResponseEntity.ok(BaseResponse.success(message, data));
+  }
+
+  public static <T> ResponseEntity<BasePageResponse<T>> successPageResponse(List<T> data, PaginationDto paginationDto,
+      long totalItems, String message) {
+    return ResponseEntity.ok(BasePageResponse.success(data, paginationDto, totalItems, message));
+  }
+
+  public static <T> ResponseEntity<BasePageResponse<T>> successPageResponse(List<T> data, PaginationDto paginationDto,
+      long totalItems) {
+    return ResponseEntity.ok(BasePageResponse.success(data, paginationDto, totalItems));
   }
 
   public static <T> ResponseEntity<BaseResponse<T>> created(String message, T data) {

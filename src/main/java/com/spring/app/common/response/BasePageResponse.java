@@ -41,15 +41,47 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
     return new BasePageResponse<T>(message, data, paginationDto, totalItems);
   }
 
+  /**
+   * Creates a new {@link BasePageResponse} instance with the provided data,
+   * pagination details, total item count, and the default message ("Success").
+   *
+   * @param data          the list of items to include in the response
+   * @param paginationDto the pagination details for the response
+   * @param totalItems    the total number of items available
+   * @return a new {@link BasePageResponse} with the specified parameters
+   */
   public static <T> BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems) {
     return new BasePageResponse<T>("Success", data, paginationDto, totalItems);
   }
 
+  /**
+   * Creates a new {@link BasePageResponse} instance with the provided data,
+   * pagination details, total item count, and the default message ("Success").
+   *
+   * @param data          the list of items to include in the response
+   * @param paginationDto the pagination details for the response
+   * @param totalItems    the total number of items available
+   * @return a new {@link BasePageResponse} with the specified parameters
+   */
   public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems) {
     return of(data, paginationDto, totalItems);
   }
 
-  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems, String message) {
+  /**
+   * Creates a new {@link BasePageResponse} instance with the provided data,
+   * pagination
+   * details, total item count, and message. This method is a convenience wrapper
+   * around
+   * {@link #of(List, PaginationDto, long, String)}.
+   *
+   * @param data          the list of items to include in the response
+   * @param paginationDto the pagination details for the response
+   * @param totalItems    the total number of items available
+   * @param message       the message to include in the response
+   * @return a new {@link BasePageResponse} with the specified parameters
+   */
+  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems,
+      String message) {
     return of(data, paginationDto, totalItems, message);
   }
 }
