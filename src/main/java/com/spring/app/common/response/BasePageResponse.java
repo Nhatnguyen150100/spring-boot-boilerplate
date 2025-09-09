@@ -40,4 +40,16 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
   public static <T> BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems, String message) {
     return new BasePageResponse<T>(message, data, paginationDto, totalItems);
   }
+
+  public static <T> BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems) {
+    return new BasePageResponse<T>("Success", data, paginationDto, totalItems);
+  }
+
+  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems) {
+    return of(data, paginationDto, totalItems);
+  }
+
+  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems, String message) {
+    return of(data, paginationDto, totalItems, message);
+  }
 }
