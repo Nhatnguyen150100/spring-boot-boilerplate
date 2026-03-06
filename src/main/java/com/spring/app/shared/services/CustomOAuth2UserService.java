@@ -8,6 +8,7 @@ import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.enums.EUserStatus;
@@ -23,6 +24,7 @@ import lombok.extern.slf4j.Slf4j;
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
   private final UserRepository userRepository;
+  private final PasswordEncoder passwordEncoder;
 
   private static final String ATTR_EMAIL = "email";
   private static final String ATTR_NAME = "name";
@@ -65,9 +67,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     log.info("Creating new user: email={}, name={}, avatar={}", email, name, avatar);
 
+    String rawPassword = RandomStringUtils.secureStrong().next(20);
     User newUser = User.builder()
         .email(email)
-        .password(RandomStringUtils.secureStrong().next(10))
+        .password(passwordEncoder.encode(rawPassword))
         .status(EUserStatus.ACTIVE)
         .avatarUrl(avatar)
         .fullName(name)

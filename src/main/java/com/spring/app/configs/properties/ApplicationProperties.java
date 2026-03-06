@@ -10,4 +10,5 @@ import lombok.Data;
 @Data
 public class ApplicationProperties {
   private String frontendUrl;
+  private String trustedProxies;
 }

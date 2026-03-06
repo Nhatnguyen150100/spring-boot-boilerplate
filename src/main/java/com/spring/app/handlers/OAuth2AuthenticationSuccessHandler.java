@@ -10,7 +10,9 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.spring.app.common.response.ResponseBuilder;
+import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.modules.auth.mapper.AuthMapper;
+import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.shared.services.JwtService;
 
@@ -28,6 +30,8 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
   private final JwtService jwtService;
   private final AuthMapper authMapper;
   private final ObjectMapper objectMapper;
+  private final JwtProperties jwtProperties;
+  private final RefreshTokenRepository refreshTokenRepository;
 
   /**
    * Handles the event of a successful OAuth2 authentication.
@@ -72,6 +76,11 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
 
     String accessToken = jwtService.generateToken(user);
     String refreshToken = jwtService.generateRefreshToken(user);
+    var refreshTokenEntity = authMapper.userToRefreshToken(
+        user,
+        refreshToken,
+        java.time.Instant.now().plusMillis(jwtProperties.getRefreshExpiration()));
+    refreshTokenRepository.save(refreshTokenEntity);
 
     var loginResponse = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
 

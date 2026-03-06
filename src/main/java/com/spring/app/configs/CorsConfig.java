@@ -1,6 +1,7 @@
 package com.spring.app.configs;
 
 import java.util.Arrays;
+import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,23 +23,28 @@ public class CorsConfig {
 
   private final ApplicationProperties applicationProperties;
 
-  private String[] getAllowedOrigins() {
-    return applicationProperties.getFrontendUrl().split(",");
+  private List<String> getAllowedOrigins() {
+    return Arrays.asList(applicationProperties.getFrontendUrl().split(","));
+  }
+
+  private List<String> getAllowedMethods() {
+    return Arrays.asList(
+        HttpMethod.GET.name(),
+        HttpMethod.POST.name(),
+        HttpMethod.PUT.name(),
+        HttpMethod.DELETE.name(),
+        HttpMethod.OPTIONS.name());
   }
 
   @Bean
   CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
 
-    String[] allowedOrigins = getAllowedOrigins();
-    configuration.setAllowedOrigins(Arrays.asList(allowedOrigins));
+    List<String> allowedOrigins = getAllowedOrigins();
+    List<String> allowedMethods = getAllowedMethods();
+    configuration.setAllowedOrigins(allowedOrigins);
 
-    configuration.setAllowedMethods(Arrays.asList(
-        HttpMethod.GET.name(),
-        HttpMethod.POST.name(),
-        HttpMethod.PUT.name(),
-        HttpMethod.DELETE.name(),
-        HttpMethod.OPTIONS.name()));
+    configuration.setAllowedMethods(allowedMethods);
 
     configuration.setAllowedHeaders(Arrays.asList(
         "Authorization",
@@ -67,10 +73,11 @@ public class CorsConfig {
       @Override
       public void addCorsMappings(@NonNull CorsRegistry registry) {
 
-        String[] allowedOrigins = getAllowedOrigins();
+        List<String> allowedOrigins = getAllowedOrigins();
+        List<String> allowedMethods = getAllowedMethods();
         registry.addMapping("/**")
-            .allowedOrigins(allowedOrigins)
-            .allowedMethods("GET")
+            .allowedOrigins(allowedOrigins.toArray(String[]::new))
+            .allowedMethods(allowedMethods.toArray(String[]::new))
             .allowCredentials(true)
             .maxAge(3600);
       }

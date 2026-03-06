@@ -67,7 +67,7 @@ public class UploadServiceImpl implements UploadServiceInterface {
     validateFile(file);
 
     String fileName = Path.of(file.getOriginalFilename()).getFileName().toString();
-    Path targetPath = uploadPath.resolve(fileName);
+    Path targetPath = resolveSafePath(fileName);
 
     try {
       Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
@@ -82,7 +82,7 @@ public class UploadServiceImpl implements UploadServiceInterface {
   @Override
   public ResponseEntity<?> downFile(String filename) throws BadRequestException {
     try {
-      Path filePath = uploadPath.resolve(filename).normalize();
+      Path filePath = resolveSafePath(filename);
       Resource resource = new UrlResource(filePath.toUri());
 
       if (!resource.exists() || !resource.isReadable()) {
@@ -107,10 +107,18 @@ public class UploadServiceImpl implements UploadServiceInterface {
     }
   }
 
+  private Path resolveSafePath(String filename) {
+    Path filePath = uploadPath.resolve(filename).normalize();
+    if (!filePath.startsWith(uploadPath)) {
+      throw new BadRequestException("Invalid file path");
+    }
+    return filePath;
+  }
+
   @Override
   public ResponseEntity<?> deleteFile(String filename) throws BadRequestException {
     try {
-      Path filePath = uploadPath.resolve(filename).normalize();
+      Path filePath = resolveSafePath(filename);
       Files.delete(filePath);
       log.info("File {} has been deleted", filename);
       return ResponseBuilder.success("File deleted successfully", filename);

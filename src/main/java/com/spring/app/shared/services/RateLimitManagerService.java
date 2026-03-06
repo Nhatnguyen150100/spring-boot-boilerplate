@@ -76,7 +76,7 @@ public class RateLimitManagerService {
    */
   public long getRemainingRequests(ERateLimitEndpoint endpointType, String time, String identifier) {
     try {
-      if (time != "minute" && time != "hour" && time != "day") {
+      if (!"minute".equals(time) && !"hour".equals(time) && !"day".equals(time)) {
         log.warn("Invalid time period: {}. Defaulting to minute.", time);
         time = "minute"; // Default to minute if invalid
       }
@@ -86,9 +86,9 @@ public class RateLimitManagerService {
         return -1;
 
       int windowSeconds;
-      if (time == "minute") {
+      if ("minute".equals(time)) {
         windowSeconds = config.getRequestsPerMinute();
-      } else if (time == "hour") {
+      } else if ("hour".equals(time)) {
         windowSeconds = config.getRequestsPerHour();
       } else {
         windowSeconds = config.getRequestsPerDay();

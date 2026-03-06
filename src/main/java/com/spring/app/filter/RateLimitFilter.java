@@ -1,6 +1,7 @@
 package com.spring.app.filter;
 
 import com.spring.app.constants.WhitelistUrlConstant;
+import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.exceptions.RateLimitExceededException;
 import com.spring.app.shared.services.RateLimitManagerService;
@@ -28,6 +29,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
   private final AntPathMatcher pathMatcher;
   private final RateLimitManagerService rateLimitManagerService;
   private final HandlerExceptionResolver handlerExceptionResolver;
+  private final ApplicationProperties applicationProperties;
 
   @Override
   protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -81,6 +83,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
   }
 
   private String getClientIpAddress(HttpServletRequest request) {
+    String remoteAddr = request.getRemoteAddr();
+    if (!isTrustedProxy(remoteAddr)) {
+      return remoteAddr;
+    }
+
     String xForwardedFor = request.getHeader("X-Forwarded-For");
     if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
       return xForwardedFor.split(",")[0].trim();
@@ -91,6 +98,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
       return xRealIp;
     }
 
-    return request.getRemoteAddr();
+    return remoteAddr;
+  }
+
+  private boolean isTrustedProxy(String remoteAddr) {
+    if (applicationProperties.getTrustedProxies() == null || applicationProperties.getTrustedProxies().isBlank()) {
+      return false;
+    }
+    String[] proxies = applicationProperties.getTrustedProxies().split(",");
+    for (String proxy : proxies) {
+      if (remoteAddr.equals(proxy.trim())) {
+        return true;
+      }
+    }
+    return false;
   }
 }

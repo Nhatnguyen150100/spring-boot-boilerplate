@@ -53,7 +53,7 @@ import lombok.*;
 @Transactional
 public class AuthServiceImpl implements AuthServiceInterface {
 
-  private static final int TIME_OTP_EXPIRATION = 3 * 60 * 1000; // 3 minutes
+  private static final int TIME_OTP_EXPIRATION_SECONDS = 3 * 60; // 3 minutes
 
   @Value("${spring.profiles.active}")
   private String activeProfile;
@@ -112,7 +112,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     }
 
     String otp = otpFunction.generateOtp();
-    otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION);
+    otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION_SECONDS);
 
     try {
       mailService.sendOtpEmail(email, otp);
@@ -163,7 +163,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
       return ResponseBuilder.success("Login successful", response);
 
     } finally {
-      monitoringService.stopRegistrationTimer(timer);
+      monitoringService.stopLoginTimer(timer);
     }
   }
 
@@ -242,7 +242,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private void sendOtpEmailAsync(String email) {
     try {
       String otp = otpFunction.generateOtp();
-      otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION);
+      otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION_SECONDS);
       mailService.sendOtpEmail(email, otp);
     } catch (Exception e) {
       log.error("Failed to send OTP email to: {}", email, e);
