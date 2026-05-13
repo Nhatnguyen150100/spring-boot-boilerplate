@@ -1,7 +1,6 @@
 package com.spring.app.modules.auth.services.impl;
 
 import java.time.Instant;
-import java.util.List;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -13,9 +12,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.spring.app.common.response.ResponseBuilder;
-import com.spring.app.configs.CacheConfig;
 import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
@@ -25,6 +24,7 @@ import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
+import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.mapper.AuthMapper;
@@ -32,28 +32,22 @@ import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
-import com.spring.app.shared.interfaces.MailServiceInterface;
+import com.spring.app.shared.interfaces.RedisServiceInterface;
+import com.spring.app.shared.services.AuthCacheService;
+import com.spring.app.shared.services.MonitoringService;
+import com.spring.app.shared.services.OtpEmailService;
 import com.spring.app.utils.JwtFunctionUtil;
 import com.spring.app.utils.OtpFunctionUtil;
 
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.transaction.annotation.Transactional;
-import com.spring.app.shared.services.MonitoringService;
-import lombok.*;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class AuthServiceImpl implements AuthServiceInterface {
-
-  private static final int TIME_OTP_EXPIRATION_SECONDS = 3 * 60; // 3 minutes
 
   @Value("${spring.profiles.active}")
   private String activeProfile;
@@ -67,11 +61,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final AuthMapper authMapper;
   private final JwtFunctionUtil jwtFunction;
   private final OtpFunctionUtil otpFunction;
-  private final MailServiceInterface mailService;
   private final MonitoringService monitoringService;
+  private final OtpEmailService otpEmailService;
+  private final AuthCacheService authCacheService;
+  private final RedisServiceInterface redisService;
 
   @Override
-  @CacheEvict(value = CacheConfig.USERS_CACHE, key = "#dto.email")
+  @Transactional
   public ResponseEntity<?> register(RegisterRequestDto dto) {
     Timer.Sample timer = monitoringService.startRegistrationTimer();
 
@@ -79,20 +75,21 @@ public class AuthServiceImpl implements AuthServiceInterface {
       String emailRegister = dto.getEmail();
       validateEmailUniqueness(emailRegister);
 
-      Boolean isDevMode = activeProfile.equals("dev");
+      boolean isDevMode = activeProfile.equals("dev");
 
       if (!isDevMode) {
-        sendOtpEmailAsync(emailRegister);
+        otpEmailService.sendOtpEmailAsync(emailRegister);
       }
 
       User newUser = User.builder()
           .email(emailRegister)
-          .password(dto.getPassword())
+          .password(passwordEncoder.encode(dto.getPassword()))
           .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING)
           .fullName(dto.getFullName())
           .build();
-      newUser.setPassword(passwordEncoder.encode(dto.getPassword()));
       userRepository.save(newUser);
+
+      authCacheService.evictCachedUser(emailRegister);
 
       var response = authMapper.userToRegisterResponseDto(newUser);
       monitoringService.incrementRegistrationAttempts();
@@ -105,30 +102,23 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   @Override
   public ResponseEntity<?> resendOtp(String email) {
-    User user = getUserByEmail(email);
+    User user = authCacheService.getUserByEmail(email);
 
     if (user.getStatus() != EUserStatus.PENDING) {
       throw new BadRequestException("User is not in pending status, cannot resend OTP");
     }
 
-    String otp = otpFunction.generateOtp();
-    otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION_SECONDS);
-
-    try {
-      mailService.sendOtpEmail(email, otp);
-    } catch (Exception e) {
-      log.error("Failed to send OTP email", e);
-      throw new BadRequestException("Failed to send OTP email");
-    }
+    otpEmailService.sendOtpEmailAsync(email);
 
     return ResponseBuilder.success("OTP resent successfully");
   }
 
   @Override
-  public ResponseEntity<?> activeAccount(ActiveAccountRequestDto activeAccountRequestDto) {
-    String email = activeAccountRequestDto.getEmail();
-    String otp = activeAccountRequestDto.getOtp();
-    User user = getUserByEmail(email);
+  @Transactional
+  public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
+    String email = dto.getEmail();
+    String otp = dto.getOtp();
+    User user = authCacheService.getUserByEmail(email);
 
     if (user.getStatus() != EUserStatus.PENDING) {
       throw new BadRequestException("User is not in pending status, cannot activate account");
@@ -141,14 +131,14 @@ public class AuthServiceImpl implements AuthServiceInterface {
     user.setStatus(EUserStatus.ACTIVE);
     userRepository.save(user);
 
-    otpFunction.removeOtp(email); // Clear OTP after successful activation
-
-    updateCachedUser(user); // Update cache with new user status
+    otpFunction.removeOtp(email);
+    authCacheService.updateCachedUser(user);
 
     return ResponseBuilder.success("Account activated successfully");
   }
 
   @Override
+  @Transactional
   public ResponseEntity<?> login(LoginRequestDto dto) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
@@ -168,7 +158,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @CacheEvict(value = CacheConfig.USERS_CACHE, key = "#user.id")
+  @Transactional
   public ResponseEntity<?> logout(HttpServletRequest request) {
     String token = jwtFunction.extractTokenFromHeader(request);
     if (token == null) {
@@ -176,9 +166,15 @@ public class AuthServiceImpl implements AuthServiceInterface {
     }
 
     String email = jwtService.extractUsername(token);
-    User user = getUserByEmail(email);
+    User user = authCacheService.getUserByEmail(email);
 
-    revokeAllTokensForUser(user);
+    long remainingTtl = jwtService.getRemainingExpirationSeconds(token);
+    if (remainingTtl > 0) {
+      redisService.blacklistToken(token, remainingTtl);
+    }
+
+    refreshTokenRepository.revokeAllByUser(user);
+    authCacheService.evictCachedUser(email);
 
     SecurityContextHolder.clearContext();
     log.info("User {} logged out successfully", user.getEmail());
@@ -186,8 +182,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
+  @Transactional
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
-    RefreshToken oldToken = getRefreshToken(dto.getRefreshToken());
+    RefreshToken oldToken = authCacheService.getRefreshToken(dto.getRefreshToken());
 
     if (oldToken.isRevoked() || oldToken.getExpiryDate().isBefore(Instant.now())) {
       throw new BadRequestException("Token is revoked or expired");
@@ -196,7 +193,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     oldToken.setRevoked(true);
     refreshTokenRepository.save(oldToken);
 
-    evictCachedToken(dto.getRefreshToken());
+    authCacheService.evictCachedToken(dto.getRefreshToken());
 
     User user = oldToken.getUser();
     String accessToken = jwtService.generateToken(user);
@@ -206,9 +203,45 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return ResponseBuilder.success("Token refreshed successfully", response);
   }
 
+  @Override
+  public ResponseEntity<?> forgotPassword(String email) {
+    try {
+      User user = authCacheService.getUserByEmail(email);
+      if (user.getStatus() == EUserStatus.ACTIVE) {
+        otpEmailService.sendOtpEmailAsync(email);
+      }
+    } catch (ResourceNotFoundException e) {
+      log.debug("Forgot password requested for non-existent email: {}", email);
+    }
+    return ResponseBuilder.success("If your email is registered, you will receive an OTP shortly");
+  }
+
+  @Override
+  @Transactional
+  public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
+    User user = authCacheService.getUserByEmail(dto.getEmail());
+
+    if (user.getStatus() != EUserStatus.ACTIVE) {
+      throw new BadRequestException("Account is not active");
+    }
+
+    if (!otpFunction.validateOtp(dto.getEmail(), dto.getOtp())) {
+      throw new BadRequestException("Invalid or expired OTP");
+    }
+
+    user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+    userRepository.save(user);
+
+    otpFunction.removeOtp(dto.getEmail());
+    authCacheService.updateCachedUser(user);
+    refreshTokenRepository.revokeAllByUser(user);
+
+    return ResponseBuilder.success("Password reset successfully");
+  }
+
   private void validateEmailUniqueness(String email) {
-    if (userRepository.existsByEmailAndStatus(email, EUserStatus.ACTIVE)) {
-      throw new ConflictException("Email already exists");
+    if (userRepository.existsByEmailAndStatusNot(email, EUserStatus.DELETED)) {
+      throw new ConflictException("Email already registered");
     }
   }
 
@@ -230,44 +263,5 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
     refreshTokenRepository.save(tokenEntity);
     return refreshToken;
-  }
-
-  private void revokeAllTokensForUser(User user) {
-    List<RefreshToken> tokens = refreshTokenRepository.findAllByUserAndIsRevokedFalse(user);
-    tokens.forEach(t -> t.setRevoked(true));
-    refreshTokenRepository.saveAll(tokens);
-  }
-
-  @Async("emailExecutor")
-  private void sendOtpEmailAsync(String email) {
-    try {
-      String otp = otpFunction.generateOtp();
-      otpFunction.storeOtp(email, otp, TIME_OTP_EXPIRATION_SECONDS);
-      mailService.sendOtpEmail(email, otp);
-    } catch (Exception e) {
-      log.error("Failed to send OTP email to: {}", email, e);
-    }
-  }
-
-  @Cacheable(value = CacheConfig.USERS_CACHE, key = "#email", unless = "#result == null")
-  private User getUserByEmail(String email) {
-    return userRepository.findByEmail(email)
-        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
-  }
-
-  @CachePut(value = CacheConfig.USERS_CACHE, key = "#user.email")
-  public User updateCachedUser(User user) {
-    return user;
-  }
-
-  @Cacheable(value = CacheConfig.TOKENS_CACHE, key = "#token", unless = "#result == null")
-  public RefreshToken getRefreshToken(String token) {
-    return refreshTokenRepository.findByToken(token)
-        .orElseThrow(() -> new BadRequestException("Invalid refresh token"));
-  }
-
-  @CacheEvict(value = CacheConfig.TOKENS_CACHE, key = "#token")
-  public void evictCachedToken(String token) {
-    log.info("Evicting cached token: {}", token);
   }
 }

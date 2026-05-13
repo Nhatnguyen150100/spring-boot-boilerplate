@@ -10,6 +10,7 @@ import lombok.*;
 import org.springframework.security.core.*;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 @Entity
@@ -35,7 +36,7 @@ public class User extends BaseEntity implements UserDetails {
 
   private String address;
 
-  private String dateOfBirth;
+  private LocalDate dateOfBirth;
 
   @Column(length = 512)
   private String description;

@@ -6,6 +6,7 @@ import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
+import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -21,4 +22,8 @@ public interface AuthServiceInterface {
   ResponseEntity<?> logout(HttpServletRequest request);
 
   ResponseEntity<?> refreshToken(RefreshTokenDto dto);
+
+  ResponseEntity<?> forgotPassword(String email);
+
+  ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto);
 }

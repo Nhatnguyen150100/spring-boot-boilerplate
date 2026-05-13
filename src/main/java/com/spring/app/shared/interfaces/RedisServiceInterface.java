@@ -3,19 +3,23 @@ package com.spring.app.shared.interfaces;
 import java.util.concurrent.TimeUnit;
 
 public interface RedisServiceInterface {
-  public void setValue(String key, Object value, long duration, TimeUnit unit);
+  void setValue(String key, Object value, long duration, TimeUnit unit);
 
-  public Object getValue(String key);
+  Object getValue(String key);
 
-  public void delete(String key);
+  void delete(String key);
 
-  public boolean hasKey(String key);
+  boolean hasKey(String key);
 
-  public void setRateLimitValue(String key, Object value, long duration, TimeUnit unit);
+  void blacklistToken(String token, long expirySeconds);
 
-  public Object getRateLimitValue(String key);
+  boolean isTokenBlacklisted(String token);
 
-  public void deleteRateLimitKey(String key);
+  void setRateLimitValue(String key, Object value, long duration, TimeUnit unit);
 
-  public boolean hasRateLimitKey(String key);
+  Object getRateLimitValue(String key);
+
+  void deleteRateLimitKey(String key);
+
+  boolean hasRateLimitKey(String key);
 }

@@ -14,6 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class RedisService implements RedisServiceInterface {
+
+  private static final String BLACKLIST_PREFIX = "blacklist:token:";
+
   private final RedisTemplate<String, Object> redisTemplate;
   private final RedisTemplate<String, Object> rateLimitRedisTemplate;
 
@@ -69,6 +72,18 @@ public class RedisService implements RedisServiceInterface {
   @Override
   public boolean hasKey(String key) {
     return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+  }
+
+  @Override
+  public void blacklistToken(String token, long expirySeconds) {
+    if (expirySeconds > 0) {
+      redisTemplate.opsForValue().set(BLACKLIST_PREFIX + token, "1", expirySeconds, TimeUnit.SECONDS);
+    }
+  }
+
+  @Override
+  public boolean isTokenBlacklisted(String token) {
+    return Boolean.TRUE.equals(redisTemplate.hasKey(BLACKLIST_PREFIX + token));
   }
 
   /**

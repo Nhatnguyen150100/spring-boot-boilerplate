@@ -1,6 +1,9 @@
 package com.spring.app.modules.auth.dto.response;
 
+import java.time.LocalDate;
 import java.util.UUID;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -17,7 +20,8 @@ public class UserResponseDto {
   String phone;
   String avatarUrl;
   String address;
-  String dateOfBirth;
+  @JsonFormat(pattern = "yyyy-MM-dd")
+  LocalDate dateOfBirth;
   String status;
   String description;
   String role;

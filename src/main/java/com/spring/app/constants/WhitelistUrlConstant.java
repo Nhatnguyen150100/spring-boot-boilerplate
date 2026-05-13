@@ -2,21 +2,21 @@ package com.spring.app.constants;
 
 public class WhitelistUrlConstant {
 
-  public static final String OAUTH2_LOGIN_URL = "/auth/oauth2/authorization";
-  public static final String OAUTH2_REDIRECT_URL = "/auth/oauth2/code/google";
+  public static final String OAUTH2_LOGIN_URL = "/api/v1/auth/oauth2/authorization";
+  public static final String OAUTH2_REDIRECT_URL = "/api/v1/auth/oauth2/code/google";
 
   public static final String[] AUTH_ENDPOINTS_RATELIMIT = {
-      "/auth/**"
+      "/api/v1/auth/**"
   };
 
   public static final String[] UPLOAD_ENDPOINTS_RATELIMIT = {
-      "/files/**"
+      "/api/v1/files/**"
   };
 
   public static final String[] API_ENDPOINTS_RATELIMIT = {};
 
   public static final String[] PUBLIC_URLS = {
-      "/auth/**"
+      "/api/v1/auth/**"
   };
 
   public static final String[] PUBLIC_GET_URLS = {
@@ -24,11 +24,8 @@ public class WhitelistUrlConstant {
       "/swagger-ui/**",
       "/swagger-ui.html",
       "/swagger-resources/**",
-      "/swagger-ui/**",
-      "/swagger-ui.html",
       "/actuator/health/**",
       "/actuator/info",
       "/oauth2/**"
   };
-
 }

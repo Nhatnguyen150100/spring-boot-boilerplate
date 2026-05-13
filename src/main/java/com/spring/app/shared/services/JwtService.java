@@ -103,12 +103,15 @@ public class JwtService implements JwtServiceInterface {
     return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
   }
 
-  private boolean isTokenExpired(String token) {
-    return extractExpiration(token).before(new Date());
+  @Override
+  public long getRemainingExpirationSeconds(String token) {
+    Date expiration = extractClaim(token, Claims::getExpiration);
+    long remainingMs = expiration.getTime() - System.currentTimeMillis();
+    return Math.max(0, remainingMs / 1000);
   }
 
-  private Date extractExpiration(String token) {
-    return extractClaim(token, Claims::getExpiration);
+  private boolean isTokenExpired(String token) {
+    return extractClaim(token, Claims::getExpiration).before(new Date());
   }
 
   private Claims extractAllClaims(String token) {

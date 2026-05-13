@@ -12,20 +12,21 @@ import com.spring.app.modules.auth.entities.User;
 import io.jsonwebtoken.Claims;
 
 public interface JwtServiceInterface {
-  public String extractUsername(String token);
+  String extractUsername(String token);
 
-  public UUID extractUserId(String token);
+  UUID extractUserId(String token);
 
-  public ERole extractRole(String token);
+  ERole extractRole(String token);
 
-  public EUserStatus extractUserStatus(String token);
+  EUserStatus extractUserStatus(String token);
 
-  public <T> T extractClaim(String token, Function<Claims, T> claimsResolver);
+  <T> T extractClaim(String token, Function<Claims, T> claimsResolver);
 
-  public String generateToken(User user);
+  String generateToken(User user);
 
-  public String generateRefreshToken(
-      User user);
+  String generateRefreshToken(User user);
 
-  public boolean isTokenValid(String token, UserDetails userDetails);
+  boolean isTokenValid(String token, UserDetails userDetails);
+
+  long getRemainingExpirationSeconds(String token);
 }

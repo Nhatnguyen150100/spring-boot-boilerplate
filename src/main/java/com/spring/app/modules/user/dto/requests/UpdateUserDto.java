@@ -1,5 +1,8 @@
 package com.spring.app.modules.user.dto.requests;
 
+import java.time.LocalDate;
+
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -23,8 +26,9 @@ public class UpdateUserDto {
   @Schema(description = "Address", example = "123 Main St, City, Country")
   String address;
 
-  @Schema(description = "Date of birth", example = "1990-01-01")
-  String dateOfBirth;
+  @JsonFormat(pattern = "yyyy-MM-dd")
+  @Schema(description = "Date of birth (yyyy-MM-dd)", example = "1990-01-15")
+  LocalDate dateOfBirth;
 
   @Schema(description = "Description", example = "I'm a software engineer")
   String description;

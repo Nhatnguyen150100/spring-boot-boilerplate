@@ -14,6 +14,8 @@ import com.spring.app.modules.auth.entities.User;
 public interface UserRepository extends JpaRepository<User, UUID> {
   boolean existsByEmailAndStatus(String email, EUserStatus status);
 
+  boolean existsByEmailAndStatusNot(String email, EUserStatus status);
+
   Optional<User> findByEmailAndStatus(String email, EUserStatus status);
 
   Optional<User> findByEmail(String email);

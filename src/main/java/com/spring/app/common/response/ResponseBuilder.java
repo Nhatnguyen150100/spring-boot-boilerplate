@@ -29,7 +29,7 @@ public class ResponseBuilder {
 
   public static <T> ResponseEntity<BaseResponse<T>> created(String message, T data) {
     return ResponseEntity.status(HttpStatus.CREATED)
-        .body(BaseResponse.success(message, HttpStatus.CREATED, data));
+        .body(BaseResponse.success(HttpStatus.CREATED, message, data));
   }
 
   public static <T> ResponseEntity<BaseResponse<T>> noContent() {
