@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.user.dto.requests.UpdateUserDto;
 import com.spring.app.modules.user.services.UserServiceInterface;
@@ -22,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @RestController
-@RequestMapping("/api/v1/users")
+@RequestMapping(ApplicationConstants.USER_BASE_PATH)
 @Tag(name = "User Management", description = "APIs for managing user accounts")
 @RequiredArgsConstructor
 @Slf4j

@@ -7,6 +7,7 @@ import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResendOtpRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping(ApplicationConstants.AUTH_BASE_PATH)
 @Tag(name = "Authentication", description = "APIs for user authentication and registration")
 @RequiredArgsConstructor
 public class AuthController {

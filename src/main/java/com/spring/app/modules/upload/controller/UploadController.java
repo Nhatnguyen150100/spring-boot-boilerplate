@@ -8,6 +8,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.upload.services.UploadServiceInterface;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,7 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Slf4j
 @RestController
-@RequestMapping("/api/v1/files")
+@RequestMapping(ApplicationConstants.FILES_BASE_PATH)
 @RequiredArgsConstructor
 @Validated
 @Tag(name = "Upload", description = "APIs for uploading and downloading files")
