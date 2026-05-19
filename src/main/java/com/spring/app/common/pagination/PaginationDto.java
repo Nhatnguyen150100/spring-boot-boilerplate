@@ -2,19 +2,15 @@ package com.spring.app.common.pagination;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import lombok.*;
+import lombok.Builder;
 
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
 @Builder
-public class PaginationDto {
-  private int page;
-  private int limit;
-
+public record PaginationDto(
+  int page,
+  int limit,
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  private String search;
-
+  String search
+) {
   /**
    * Calculates the skip value for pagination queries.
    *

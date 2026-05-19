@@ -72,7 +72,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     Timer.Sample timer = monitoringService.startRegistrationTimer();
 
     try {
-      String emailRegister = dto.getEmail();
+      String emailRegister = dto.email();
       validateEmailUniqueness(emailRegister);
 
       boolean isDevMode = activeProfile.equals("dev");
@@ -81,12 +81,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
         otpEmailService.sendOtpEmailAsync(emailRegister);
       }
 
-      User newUser = User.builder()
-          .email(emailRegister)
-          .password(passwordEncoder.encode(dto.getPassword()))
-          .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING)
-          .fullName(dto.getFullName())
-          .build();
+      User newUser = User.builder().email(emailRegister).password(passwordEncoder.encode(dto.password()))
+          .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
       userRepository.save(newUser);
 
       authCacheService.evictCachedUser(emailRegister);
@@ -116,8 +112,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
-    String email = dto.getEmail();
-    String otp = dto.getOtp();
+    String email = dto.email();
+    String otp = dto.otp();
     User user = authCacheService.getUserByEmail(email);
 
     if (user.getStatus() != EUserStatus.PENDING) {
@@ -142,7 +138,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> login(LoginRequestDto dto) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
-      User user = authenticate(dto.getEmail(), dto.getPassword());
+      User user = authenticate(dto.email(), dto.password());
 
       String accessToken = jwtService.generateToken(user);
       String refreshToken = createAndStoreRefreshToken(user);
@@ -184,7 +180,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
-    RefreshToken oldToken = authCacheService.getRefreshToken(dto.getRefreshToken());
+    RefreshToken oldToken = authCacheService.getRefreshToken(dto.refreshToken());
 
     if (oldToken.isRevoked() || oldToken.getExpiryDate().isBefore(Instant.now())) {
       throw new BadRequestException("Token is revoked or expired");
@@ -193,7 +189,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     oldToken.setRevoked(true);
     refreshTokenRepository.save(oldToken);
 
-    authCacheService.evictCachedToken(dto.getRefreshToken());
+    authCacheService.evictCachedToken(dto.refreshToken());
 
     User user = oldToken.getUser();
     String accessToken = jwtService.generateToken(user);
@@ -219,20 +215,20 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
-    User user = authCacheService.getUserByEmail(dto.getEmail());
+    User user = authCacheService.getUserByEmail(dto.email());
 
     if (user.getStatus() != EUserStatus.ACTIVE) {
       throw new BadRequestException("Account is not active");
     }
 
-    if (!otpFunction.validateOtp(dto.getEmail(), dto.getOtp())) {
+    if (!otpFunction.validateOtp(dto.email(), dto.otp())) {
       throw new BadRequestException("Invalid or expired OTP");
     }
 
-    user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+    user.setPassword(passwordEncoder.encode(dto.newPassword()));
     userRepository.save(user);
 
-    otpFunction.removeOtp(dto.getEmail());
+    otpFunction.removeOtp(dto.email());
     authCacheService.updateCachedUser(user);
     refreshTokenRepository.revokeAllByUser(user);
 

@@ -2,13 +2,10 @@ package com.spring.app.common.pagination;
 
 import java.util.List;
 
-import lombok.*;
+import lombok.Builder;
 
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
 @Builder
-public class PageDto<T> {
-  private List<T> items;
-  private PaginationMetaDataDto meta;
-}
+public record PageDto<T>(
+  List<T> items,
+  PaginationMetaDataDto meta
+) {}

@@ -35,7 +35,7 @@ public class AuthController {
   @Operation(summary = "Resend OTP to the user's email")
   @PostMapping("/resend-otp")
   public ResponseEntity<?> resendOtp(@Valid @RequestBody ResendOtpRequestDto resendOtpRequestDto) {
-    return authService.resendOtp(resendOtpRequestDto.getEmail());
+    return authService.resendOtp(resendOtpRequestDto.email());
   }
 
   @Operation(summary = "Activate user account with email and OTP")
@@ -65,7 +65,7 @@ public class AuthController {
   @Operation(summary = "Request a password reset OTP")
   @PostMapping("/forgot-password")
   public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequestDto dto) {
-    return authService.forgotPassword(dto.getEmail());
+    return authService.forgotPassword(dto.email());
   }
 
   @Operation(summary = "Reset password using OTP")
