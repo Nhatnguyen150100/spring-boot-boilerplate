@@ -7,7 +7,15 @@ import org.springframework.http.ResponseEntity;
 
 import com.spring.app.common.pagination.PaginationDto;
 
-public class ResponseBuilder {
+public final class ResponseBuilder {
+
+  private ResponseBuilder() {
+    throw new IllegalStateException("Utility class");
+  }
+
+  public static <T> ResponseEntity<BaseResponse<T>> success() {
+    return ResponseEntity.ok(BaseResponse.success("Success", null));
+  }
 
   public static <T> ResponseEntity<BaseResponse<T>> success(T data) {
     return ResponseEntity.ok(BaseResponse.success("Success", data));
@@ -27,12 +35,16 @@ public class ResponseBuilder {
     return ResponseEntity.ok(BasePageResponse.success(data, paginationDto, totalItems));
   }
 
+  public static <T> ResponseEntity<BaseResponse<T>> created(T data) {
+    return created("Created", data);
+  }
+
   public static <T> ResponseEntity<BaseResponse<T>> created(String message, T data) {
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(BaseResponse.success(HttpStatus.CREATED, message, data));
   }
 
-  public static <T> ResponseEntity<BaseResponse<T>> noContent() {
+  public static ResponseEntity<Void> noContent() {
     return ResponseEntity.noContent().build();
   }
 
