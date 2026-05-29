@@ -3,10 +3,10 @@ package com.spring.app.configs;
 import java.util.Arrays;
 import java.util.List;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.lang.NonNull;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -23,11 +23,11 @@ public class CorsConfig {
 
   private final ApplicationProperties applicationProperties;
 
-  private List<String> getAllowedOrigins() {
+  private @NonNull List<String> getAllowedOrigins() {
     return Arrays.asList(applicationProperties.getFrontendUrl().split(","));
   }
 
-  private List<String> getAllowedMethods() {
+  private @NonNull List<String> getAllowedMethods() {
     return Arrays.asList(
         HttpMethod.GET.name(),
         HttpMethod.POST.name(),

@@ -20,7 +20,7 @@ public class RedisConfig {
   /**
    * Provides a RedisConnectionFactory bean that establishes connections to a
    * Redis server.
-   * 
+   *
    * @return A LettuceConnectionFactory instance for Redis connections.
    */
   @Bean
@@ -40,12 +40,11 @@ public class RedisConfig {
    * using JSON serialization for values and String serialization for keys.
    * This template is used to perform Redis operations with specified serializers
    * for keys and values, ensuring data consistency and compatibility.
-   * 
+   *
    * @param connectionFactory The RedisConnectionFactory to establish
    *                          connections with the Redis server.
    * @return A RedisTemplate instance for Redis operations.
    */
-
   @Bean
   RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
     RedisTemplate<String, Object> template = new RedisTemplate<>();

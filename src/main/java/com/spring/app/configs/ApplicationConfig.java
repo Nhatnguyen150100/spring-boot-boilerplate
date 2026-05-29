@@ -1,5 +1,6 @@
 package com.spring.app.configs;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
@@ -86,8 +87,7 @@ public class ApplicationConfig {
     authProvider.setPasswordEncoder(passwordEncoder());
     authProvider.setHideUserNotFoundExceptions(false); // To throw UsernameNotFoundException
     authProvider.setPostAuthenticationChecks(user -> {
-      if (user instanceof User) {
-        User appUser = (User) user;
+      if (user instanceof User appUser) {
         if (appUser.getStatus() != EUserStatus.ACTIVE) {
           throw new UserNotActiveException("User with email " + appUser.getEmail() + " is not active");
         }
@@ -118,7 +118,7 @@ public class ApplicationConfig {
    * @throws Exception If the AuthenticationManager cannot be created.
    */
   @Bean
-  AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
+  AuthenticationManager authenticationManager(@NonNull AuthenticationConfiguration config) throws Exception {
     return config.getAuthenticationManager();
   }
 }

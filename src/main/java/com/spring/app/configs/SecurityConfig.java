@@ -11,7 +11,6 @@ import org.springframework.security.config.annotation.web.configurers.AuthorizeH
 import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
 import org.springframework.security.config.annotation.web.configurers.SessionManagementConfigurer;
-import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer.AuthorizationManagerRequestMatcherRegistry;
 import org.springframework.security.config.annotation.web.configurers.oauth2.client.OAuth2LoginConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -60,7 +59,7 @@ public class SecurityConfig {
    * <li>Configures session management settings defined in
    * {@link #sessionManagement(SessionManagementConfigurer)}.</li>
    * <li>Configures authorization settings defined in
-   * {@link #authorizeHttpRequests(AuthorizeHttpRequestsConfigurer)}.</li>
+   * .</li>
    * <li>Specifies the {@link AuthenticationProvider} to use for authentication.
    * </li>
    * <li>Adds the {@link JwtAuthenticatorFilter} to the filter chain before the
@@ -78,13 +77,13 @@ public class SecurityConfig {
     return http
         .cors(cors -> cors.configurationSource(corsConfigurationSource))
         .csrf(CsrfConfigurer::disable)
-        .exceptionHandling(exception -> exceptionHandling(exception))
-        .sessionManagement(session -> sessionManagement(session))
-        .authorizeHttpRequests(auth -> authorizeHttpRequests(auth))
+        .exceptionHandling(this::exceptionHandling)
+        .sessionManagement(this::sessionManagement)
+        .authorizeHttpRequests(this::authorizeHttpRequests)
         .authenticationProvider(authenticationProvider)
         .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-        .oauth2Login(oauth2 -> oauth2Login(oauth2))
+        .oauth2Login(this::oauth2Login)
         .build();
   }
 
@@ -99,14 +98,13 @@ public class SecurityConfig {
    * requires authentication.
    *
    * @param auth The AuthorizationManagerRequestMatcherRegistry to configure.
-   * @return The configured AuthorizationManagerRequestMatcherRegistry.
    */
-  private AuthorizationManagerRequestMatcherRegistry authorizeHttpRequests(
+  private void authorizeHttpRequests(
       AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth) {
-    return auth
-        .requestMatchers(WhitelistUrlConstant.PUBLIC_URLS).permitAll()
-        .requestMatchers(HttpMethod.GET, WhitelistUrlConstant.PUBLIC_GET_URLS).permitAll()
-        .anyRequest().authenticated();
+    auth
+      .requestMatchers(WhitelistUrlConstant.PUBLIC_URLS).permitAll()
+      .requestMatchers(HttpMethod.GET, WhitelistUrlConstant.PUBLIC_GET_URLS).permitAll()
+      .anyRequest().authenticated();
   }
 
   /**

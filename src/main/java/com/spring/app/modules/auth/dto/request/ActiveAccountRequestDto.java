@@ -7,11 +7,12 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 
 public record ActiveAccountRequestDto(
-    @Schema(description = "Email address of the user", example = "user1@gmail.com") @Email(message = "Email is not valid", regexp = "^[a-zA-Z0-9_!#$%&'*+/=?`{|}~^.-]+@[a-zA-Z0-9.-]+$") @NotBlank(message = "Email is required") @NotEmpty(message = "Email cannot be empty")
-    String email,
+  @Schema(description = "Email address of the user", example = "user1@gmail.com") @Email(message = "Email is not valid", regexp = "^[a-zA-Z0-9_!#$%&'*+/=?`{|}~^.-]+@[a-zA-Z0-9.-]+$") @NotBlank(message = "Email is required") @NotEmpty(message = "Email cannot be empty")
+  String email,
 
-    @Schema(description = "One-Time Password (OTP) for account activation", example = "123456") @NotBlank(message = "OTP is required") @NotEmpty(message = "OTP cannot be empty") @Size(min = 6, max = 6, message = "OTP must be exactly 6 characters")
-    String otp
+  @Schema(description = "One-Time Password (OTP) for account activation", example = "123456") @NotBlank(message = "OTP is required") @NotEmpty(message = "OTP cannot be empty") @Size(min = 6, max = 6, message = "OTP must be exactly 6 characters")
+  String otp
+
 
 ) {
 }

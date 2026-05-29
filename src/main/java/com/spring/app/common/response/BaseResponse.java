@@ -4,6 +4,7 @@ import lombok.*;
 
 import java.time.Instant;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 
@@ -19,21 +20,21 @@ public class BaseResponse<T> {
   private T data;
   private String timestamp;
 
-  public static <T> BaseResponse<T> of(HttpStatusCode status, String message, T data) {
+  public static <T> BaseResponse<T> of(@NonNull HttpStatusCode status, String message, T data) {
     return BaseResponse.<T>builder()
-        .statusCode(status.value())
-        .message(message)
-        .data(data)
-        .timestamp(Instant.now().toString())
-        .build();
+      .statusCode(status.value())
+      .message(message)
+      .data(data)
+      .timestamp(Instant.now().toString())
+      .build();
   }
 
-  public static <T> BaseResponse<T> of(HttpStatusCode status, String message) {
+  public static <T> BaseResponse<T> of(@NonNull HttpStatusCode status, String message) {
     return BaseResponse.<T>builder()
-        .statusCode(status.value())
-        .message(message)
-        .timestamp(Instant.now().toString())
-        .build();
+      .statusCode(status.value())
+      .message(message)
+      .timestamp(Instant.now().toString())
+      .build();
   }
 
   public static <T> BaseResponse<T> success(HttpStatusCode status, String message, T data) {

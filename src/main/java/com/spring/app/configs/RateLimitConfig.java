@@ -1,5 +1,6 @@
 package com.spring.app.configs;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -9,7 +10,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RateLimitConfig {
 
   @Bean("rateLimitRedisTemplate")
-  RedisTemplate<String, String> rateLimitRedisTemplate(RedisTemplate<String, Object> redisTemplate) {
+  RedisTemplate<String, String> rateLimitRedisTemplate(@NonNull RedisTemplate<String, Object> redisTemplate) {
     RedisTemplate<String, String> rateLimitTemplate = new RedisTemplate<>();
     rateLimitTemplate.setConnectionFactory(redisTemplate.getConnectionFactory());
 

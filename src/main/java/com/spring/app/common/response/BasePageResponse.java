@@ -3,6 +3,7 @@ package com.spring.app.common.response;
 import java.time.Instant;
 import java.util.List;
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.HttpStatus;
 
 import com.spring.app.common.pagination.PageDto;
@@ -17,13 +18,13 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
 
   public BasePageResponse(String message, List<T> data, PaginationDto paginationDto, long totalItems) {
     super(
-        HttpStatus.OK.value(),
-        message,
-        PageDto.<T>builder()
-            .items(data)
-            .meta(new PaginationMetaDataDto(totalItems, paginationDto))
-            .build(),
-        Instant.now().toString());
+      HttpStatus.OK.value(),
+      message,
+      PageDto.<T>builder()
+        .items(data)
+        .meta(new PaginationMetaDataDto(totalItems, paginationDto))
+        .build(),
+      Instant.now().toString());
   }
 
   /**
@@ -37,7 +38,7 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
    * @param message       the message to include in the response
    * @return a new {@link BasePageResponse} with the specified parameters
    */
-  public static <T> BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems, String message) {
+  public static <T> @NonNull BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems, String message) {
     return new BasePageResponse<T>(message, data, paginationDto, totalItems);
   }
 
@@ -50,7 +51,7 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
    * @param totalItems    the total number of items available
    * @return a new {@link BasePageResponse} with the specified parameters
    */
-  public static <T> BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems) {
+  public static <T> @NonNull BasePageResponse<T> of(List<T> data, PaginationDto paginationDto, long totalItems) {
     return new BasePageResponse<T>("Success", data, paginationDto, totalItems);
   }
 
@@ -63,7 +64,7 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
    * @param totalItems    the total number of items available
    * @return a new {@link BasePageResponse} with the specified parameters
    */
-  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems) {
+  public static <T> @NonNull BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems) {
     return of(data, paginationDto, totalItems);
   }
 
@@ -80,8 +81,8 @@ public class BasePageResponse<T> extends BaseResponse<PageDto<T>> {
    * @param message       the message to include in the response
    * @return a new {@link BasePageResponse} with the specified parameters
    */
-  public static <T> BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems,
-      String message) {
+  public static <T> @NonNull BasePageResponse<T> success(List<T> data, PaginationDto paginationDto, long totalItems,
+                                                         String message) {
     return of(data, paginationDto, totalItems, message);
   }
 }
