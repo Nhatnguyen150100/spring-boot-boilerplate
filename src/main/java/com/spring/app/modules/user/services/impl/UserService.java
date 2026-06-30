@@ -33,7 +33,7 @@ public class UserService implements UserServiceInterface {
   @Cacheable(value = CacheConfig.USER_PROFILE, key = "#userId")
   public ResponseEntity<?> getUserProfile(UUID userId) {
     var user = userRepository.findById(userId)
-        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userId));
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
     var response = userMapper.userToUserResponseDto(user);
 
@@ -46,7 +46,7 @@ public class UserService implements UserServiceInterface {
   @CachePut(value = CacheConfig.USER_PROFILE, key = "#userId")
   public ResponseEntity<?> updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
     var user = userRepository.findById(userId)
-        .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + userId));
+        .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
     updateUserMapper.updateUserDtoToUser(updateUserDto, user);
 

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.spring.app.common.response.ResponseBuilder;
 import com.spring.app.configs.properties.JwtProperties;
+import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
@@ -36,6 +37,7 @@ import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.AuthCacheService;
 import com.spring.app.shared.services.MonitoringService;
 import com.spring.app.shared.services.OtpEmailService;
+import com.spring.app.shared.services.RateLimitManagerService;
 import com.spring.app.utils.JwtFunctionUtil;
 import com.spring.app.utils.OtpFunctionUtil;
 
@@ -65,6 +67,18 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final OtpEmailService otpEmailService;
   private final AuthCacheService authCacheService;
   private final RedisServiceInterface redisService;
+  private final RateLimitManagerService rateLimitManagerService;
+
+  /**
+   * Per-email throttle for sensitive auth actions (OTP send/verify, login).
+   * Complements the per-IP limit in {@link com.spring.app.filter.RateLimitFilter}
+   * so a single account cannot be brute-forced / email-bombed from many IPs.
+   */
+  private void throttleByEmail(String email) {
+    if (email != null && !email.isBlank()) {
+      rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, "email:" + email.toLowerCase());
+    }
+  }
 
   @Override
   @Transactional
@@ -73,6 +87,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
     try {
       String emailRegister = dto.email();
+      throttleByEmail(emailRegister);
       validateEmailUniqueness(emailRegister);
 
       boolean isDevMode = activeProfile.equals("dev");
@@ -98,6 +113,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   @Override
   public ResponseEntity<?> resendOtp(String email) {
+    throttleByEmail(email);
     User user = authCacheService.getUserByEmail(email);
 
     if (user.getStatus() != EUserStatus.PENDING) {
@@ -114,6 +130,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
     String email = dto.email();
     String otp = dto.otp();
+    throttleByEmail(email);
     User user = authCacheService.getUserByEmail(email);
 
     if (user.getStatus() != EUserStatus.PENDING) {
@@ -138,6 +155,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> login(LoginRequestDto dto) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
+      throttleByEmail(dto.email());
       User user = authenticate(dto.email(), dto.password());
 
       String accessToken = jwtService.generateToken(user);
@@ -201,6 +219,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   @Override
   public ResponseEntity<?> forgotPassword(String email) {
+    throttleByEmail(email);
     try {
       User user = authCacheService.getUserByEmail(email);
       if (user.getStatus() == EUserStatus.ACTIVE) {
@@ -215,6 +234,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
+    throttleByEmail(dto.email());
     User user = authCacheService.getUserByEmail(dto.email());
 
     if (user.getStatus() != EUserStatus.ACTIVE) {

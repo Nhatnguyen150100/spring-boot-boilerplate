@@ -174,38 +174,11 @@
       <artifactId>micrometer-registry-prometheus</artifactId>
     </dependency>
 
-    <!-- Resilience4j for circuit breaker -->
-    <!--
-    https://mvnrepository.com/artifact/org.springframework.cloud/spring-cloud-starter-circuitbreaker-resilience4j -->
-    <dependency>
-      <groupId>org.springframework.cloud</groupId>
-      <artifactId>spring-cloud-starter-circuitbreaker-resilience4j</artifactId>
-      <version>3.3.0</version>
-    </dependency>
-
     <!-- Cache support -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-cache</artifactId>
     </dependency>
-
-    <!-- Rate Limiting with Bucket4j -->
-    <dependency>
-      <groupId>com.bucket4j</groupId>
-      <artifactId>bucket4j-core</artifactId>
-      <version>8.7.0</version>
-    </dependency>
-    <dependency>
-      <groupId>com.bucket4j</groupId>
-      <artifactId>bucket4j-redis</artifactId>
-      <version>8.7.0</version>
-    </dependency>
-      <dependency>
-          <groupId>org.jetbrains</groupId>
-          <artifactId>annotations</artifactId>
-          <version>RELEASE</version>
-          <scope>compile</scope>
-      </dependency>
 
   </dependencies>
 

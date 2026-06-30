@@ -11,9 +11,12 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
+
+import java.util.Arrays;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +28,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
+  private final ApplicationProperties applicationProperties;
 
   private static final String ATTR_EMAIL = "email";
   private static final String ATTR_NAME = "name";
@@ -44,6 +48,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         throw new IllegalStateException("OAuth2 provider did not return an email");
       }
 
+      if (!isEmailDomainAllowed(email)) {
+        throw new IllegalStateException("OAuth2 email domain is not allowed: " + email);
+      }
+
       User user = findOrCreateUser(oauth2User, email);
 
       return new DefaultOAuth2User(
@@ -54,6 +62,22 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     } catch (Exception e) {
       throw new RuntimeException("Error loading OAuth2 user", e);
     }
+  }
+
+  private boolean isEmailDomainAllowed(String email) {
+    String allowed = applicationProperties.getOauth2AllowedEmailDomains();
+    if (allowed == null || allowed.isBlank()) {
+      return true; // No whitelist configured -> accept any domain.
+    }
+    int at = email.lastIndexOf('@');
+    if (at < 0) {
+      return false;
+    }
+    String domain = email.substring(at + 1).toLowerCase();
+    return Arrays.stream(allowed.split(","))
+        .map(d -> d.trim().toLowerCase())
+        .filter(d -> !d.isEmpty())
+        .anyMatch(domain::equals);
   }
 
   private User findOrCreateUser(OAuth2User oauth2User, String email) {

@@ -8,7 +8,6 @@ import com.spring.app.shared.interfaces.RedisServiceInterface;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -85,24 +84,24 @@ public class RateLimitManagerService {
       if (config == null)
         return -1;
 
-      int windowSeconds;
+      int maxRequests;
       if ("minute".equals(time)) {
-        windowSeconds = config.getRequestsPerMinute();
+        maxRequests = config.getRequestsPerMinute();
       } else if ("hour".equals(time)) {
-        windowSeconds = config.getRequestsPerHour();
+        maxRequests = config.getRequestsPerHour();
       } else {
-        windowSeconds = config.getRequestsPerDay();
+        maxRequests = config.getRequestsPerDay();
       }
 
       String timeKey = String.format("rate_limit:%s:%s:%s", endpointType, time, identifier);
       String currentCount = (String) redisService.getRateLimitValue(timeKey);
 
       if (currentCount == null) {
-        return windowSeconds;
+        return maxRequests;
       }
 
       int count = Integer.parseInt(currentCount);
-      return Math.max(0, windowSeconds - count);
+      return Math.max(0, maxRequests - count);
 
     } catch (Exception e) {
       log.error("Error getting remaining requests for {} in {} with identifier: {}", endpointType, time, identifier, e);
@@ -134,16 +133,14 @@ public class RateLimitManagerService {
 
   private boolean checkRateLimit(String key, int maxRequests, int windowSeconds) {
     try {
-      String currentCount = (String) redisService.getRateLimitValue(key);
-      int count = currentCount == null ? 0 : Integer.parseInt(currentCount);
+      // Atomic increment avoids the read-then-write race under concurrency, and the
+      // window TTL is set only when the counter is first created (fixed window).
+      long count = redisService.incrementRateLimit(key, windowSeconds);
 
-      if (count >= maxRequests) {
+      if (count > maxRequests) {
         log.warn("Rate limit exceeded for key: {} (count: {}, max: {})", key, count, maxRequests);
         return false;
       }
-
-      // Increment counter
-      redisService.setRateLimitValue(key, String.valueOf(count + 1), windowSeconds, TimeUnit.SECONDS);
       return true;
 
     } catch (Exception e) {

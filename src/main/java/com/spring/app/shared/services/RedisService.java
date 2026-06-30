@@ -102,6 +102,17 @@ public class RedisService implements RedisServiceInterface {
     rateLimitRedisTemplate.opsForValue().set(key, value, duration, unit);
   }
 
+  @Override
+  public long incrementRateLimit(String key, long windowSeconds) {
+    Long count = rateLimitRedisTemplate.opsForValue().increment(key);
+    if (count != null && count == 1L) {
+      // Only set the TTL when the window is first opened; subsequent increments
+      // must not refresh it, otherwise the window would slide indefinitely.
+      rateLimitRedisTemplate.expire(key, windowSeconds, TimeUnit.SECONDS);
+    }
+    return count == null ? 0L : count;
+  }
+
   /**
    * Retrieves the value associated with the given key from the rate limit Redis
    * store. This store is separate from the main Redis connection.

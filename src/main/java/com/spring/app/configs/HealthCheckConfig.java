@@ -4,6 +4,8 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
@@ -28,11 +30,13 @@ public class HealthCheckConfig {
   }
 
   @Bean
-  HealthIndicator redisHealthIndicator() {
+  HealthIndicator redisHealthIndicator(RedisConnectionFactory redisConnectionFactory) {
     return () -> {
-      try {
+      try (RedisConnection connection = redisConnectionFactory.getConnection()) {
+        String pong = connection.ping();
         return Health.up()
             .withDetail("redis", "Connected")
+            .withDetail("ping", pong)
             .build();
       } catch (Exception e) {
         return Health.down()

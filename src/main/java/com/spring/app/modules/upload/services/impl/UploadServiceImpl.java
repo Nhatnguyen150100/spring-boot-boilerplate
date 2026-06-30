@@ -5,9 +5,9 @@ import com.spring.app.configs.properties.FileStorageProperties;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.modules.upload.services.UploadServiceInterface;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
@@ -21,10 +21,10 @@ import java.nio.file.*;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class UploadServiceImpl implements UploadServiceInterface {
 
-  @Autowired
-  private FileStorageProperties fileStorageProperties;
+  private final FileStorageProperties fileStorageProperties;
 
   private Path uploadPath;
 

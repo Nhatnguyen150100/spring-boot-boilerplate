@@ -13,7 +13,10 @@ spring:
   # ===============================
   jpa:
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema; Hibernate only validates entities against it.
+      # If validate fails on first boot due to a column-type nuance (UUID/enum/datetime),
+      # switch to `none` and align the migration DDL — do NOT switch back to `update`.
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
@@ -27,7 +30,7 @@ spring:
   # ===============================
   flyway:
     baseline-on-migrate: true
-    enabled: false
+    enabled: true
     baseline-description: "initial"
     baseline-version: 1
     locations: classpath:db/migrations
@@ -104,15 +107,41 @@ spring:
     name: springapp
 
 # ===============================
-# = Jwt config
+# = Application / Jwt config
 # ===============================
 application:
+  # Comma-separated list of allowed frontend origins for CORS.
+  frontend-url: http://localhost:3000
+  # Comma-separated list of trusted reverse-proxy IPs. Only when the request comes
+  # from one of these is X-Forwarded-For / X-Real-IP honored for rate limiting.
+  trusted-proxies:
+  # Optional: restrict OAuth2 sign-in to these email domains (e.g. "solashi.com").
+  # Leave blank to accept any domain.
+  oauth2-allowed-email-domains:
   security:
     jwt:
+      # REQUIRED. Base64-encoded secret, must be strong (>= 256-bit for HS256).
+      # Application fails to start if blank (@NotBlank). Never commit a real value.
       secret-key:
       expiration: 86400000
       refresh-token:
         expiration: 604800000
+
+# ===============================
+# = Actuator / Monitoring
+# ===============================
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only expose what is needed; do NOT expose env/configprops/beans/shutdown.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: springapp
 
 # ===============================
 # = Rate Limiting Configuration
