@@ -1,5 +1,6 @@
 package com.spring.app.configs;
 
+import java.nio.file.attribute.UserPrincipal;
 import java.util.Optional;
 
 import org.springframework.data.domain.AuditorAware;
@@ -31,7 +32,7 @@ public class ApplicationAuditAware implements AuditorAware<String> {
       return Optional.of(SYSTEM_AUDITOR);
     }
 
-    Object principal = authentication.getPrincipal();
+    UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
     if (principal instanceof User userDetails && userDetails.getId() != null) {
       return Optional.of(userDetails.getId().toString());
     }

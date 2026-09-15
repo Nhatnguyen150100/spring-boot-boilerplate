@@ -8,10 +8,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record LoginRequestDto(
-    @Email(message = "Email format is not valid") @Size(max = 255, message = "Email must be less than 255 characters") @NotBlank(message = "Email is required") @Schema(description = "Email address of the user", example = "user1@gmail.com")
+    @Email(message = "Email format is not valid") 
+    @Size(max = 255, message = "Email must be less than 255 characters") 
+    @NotBlank(message = "Email is required") 
+    @Schema(description = "Email address of the user", example = "user1@gmail.com")
     String email,
 
-    @NotBlank(message = "Password is required") @StrongPassword @Schema(description = "Password of the user", example = "StrongP@ss123")
+    @NotBlank(message = "Password is required") 
+    @StrongPassword 
+    @Schema(description = "Password of the user", example = "StrongP@ss123")
     String password
 
 ) {

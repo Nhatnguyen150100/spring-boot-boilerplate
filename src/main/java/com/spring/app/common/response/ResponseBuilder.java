@@ -15,7 +15,7 @@ public final class ResponseBuilder {
   }
 
   public static <T> @NonNull ResponseEntity<BaseResponse<T>> success() {
-    return ResponseEntity.ok(BaseResponse.success("Success", null));
+    return ResponseEntity.ok(BaseResponse.success("Success"));
   }
 
   public static <T> @NonNull ResponseEntity<BaseResponse<T>> success(T data) {
