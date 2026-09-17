@@ -1,0 +1,237 @@
+# =============================================================================
+#  BASE CONFIGURATION - loaded for every profile.
+#
+#  Rules for this directory:
+#    1. These files are COMMITTED. They must never contain a real secret.
+#    2. Every value is a safe local-dev default, or ${ENV_VAR:default}.
+#    3. Profile files (application-{dev,prod}.yml) declare ONLY the differences.
+#       Spring merges them on top of this file - do not copy blocks over.
+#    4. Secrets come from environment variables, or from a local .env file
+#       (see .env.example), which is git-ignored.
+#
+#  Namespace convention:
+#    spring.*      -> framework properties only
+#    application.* -> everything this application owns
+# =============================================================================
+
+spring:
+  application:
+    name: ${APP_NAME:springapp}
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  # The [.properties] suffix tells Boot which loader to use. Without it, the
+  # moment a .env file exists startup fails with "extension is not known to any
+  # PropertySourceLoader".
+  config:
+    import: optional:file:.env[.properties]
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:db_test_spring}?useSSL=${DB_USE_SSL:false}&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+  jpa:
+    # Flyway owns the schema; Hibernate only checks that entities match it.
+    # For throw-away local work: JPA_DDL_AUTO=update and FLYWAY_ENABLED=false.
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+    show-sql: ${JPA_SHOW_SQL:false}
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: ${JPA_FORMAT_SQL:false}
+        order_inserts: true
+        order_updates: true
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    baseline-on-migrate: true
+    baseline-description: "initial"
+    baseline-version: 1
+    locations: classpath:db/migrations
+
+  servlet:
+    multipart:
+      max-file-size: ${MAX_FILE_SIZE:10MB}
+      max-request-size: ${MAX_REQUEST_SIZE:10MB}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 60000
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            # Placeholder, not empty: Spring Boot refuses to start a registration
+            # whose client-id is blank ("Client id of registration 'google' must
+            # not be empty"), so an empty default would stop the app from booting
+            # on any machine that has not set up Google sign-in. With these the
+            # app starts and only the Google login itself fails, until real
+            # credentials are set. The prod profile drops the fallback entirely.
+            client-id: ${GOOGLE_CLIENT_ID:unset-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:unset-google-client-secret}
+            scope: openid,email,profile
+            redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/api/v1/auth/oauth2/code/google}
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: sub
+
+  cloud:
+    compatibility-verifier:
+      enabled: false
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+
+# =============================================================================
+#  Application-owned settings (see configs/properties/*.java)
+# =============================================================================
+application:
+
+  # Public base URL of the frontend, used for links inside outgoing e-mails.
+  frontend-url: ${FRONTEND_URL:http://localhost:3000}
+
+  cors:
+    # Comma-separated list of origins allowed to call the API.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    max-age-seconds: 3600
+
+  redis:
+    # Stop startup when Redis is unreachable. Redis is not optional at runtime,
+    # so failing here beats failing on every request later.
+    fail-fast: ${REDIS_FAIL_FAST:true}
+
+  # Reverse-proxy IPs whose X-Forwarded-For / X-Real-IP may be trusted for rate
+  # limiting. Leave empty unless the app really sits behind a proxy you control,
+  # otherwise any client can spoof its IP and bypass the limits.
+  trusted-proxies: ${TRUSTED_PROXIES:}
+
+  # Restrict OAuth2 sign-in to these e-mail domains. Empty = accept any domain.
+  oauth2-allowed-email-domains: ${OAUTH2_ALLOWED_EMAIL_DOMAINS:}
+
+  security:
+    jwt:
+      # Dev-only fallback so a fresh clone boots without setup. The prod profile
+      # drops the fallback, so a missing JWT_SECRET_KEY fails startup there.
+      # Must be Base64 (JwtService decodes it) and >= 256-bit for HS256.
+      secret-key: ${JWT_SECRET_KEY:ZGV2LW9ubHktc2VjcmV0LWRvLW5vdC11c2UtaW4tcHJvZHVjdGlvbi1taW4tMjU2LWJpdA==}
+      expiration: ${JWT_EXPIRATION:86400000}
+      refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+  file:
+    storage:
+      upload-dir: ${UPLOAD_DIR:uploads}
+
+  mail:
+    app: ${MAIL_APP_NAME:SPRING_APP}
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    from: ${MAIL_FROM:}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    smtp-auth: true
+    start-tls: true
+    ssl-enable: ${MAIL_SSL_ENABLED:false}
+    default-encoding: UTF-8
+
+  cache:
+    default-ttl: ${CACHE_DEFAULT_TTL:30m}
+    users-ttl: ${CACHE_USERS_TTL:10m}
+    tokens-ttl: ${CACHE_TOKENS_TTL:5m}
+    cache-null-values: false
+
+  async:
+    task:
+      core-size: ${ASYNC_TASK_CORE_SIZE:5}
+      max-size: ${ASYNC_TASK_MAX_SIZE:10}
+      queue-capacity: ${ASYNC_TASK_QUEUE_CAPACITY:25}
+    email:
+      core-size: ${ASYNC_EMAIL_CORE_SIZE:2}
+      max-size: ${ASYNC_EMAIL_MAX_SIZE:5}
+      queue-capacity: ${ASYNC_EMAIL_QUEUE_CAPACITY:10}
+
+  # Quotas are identical in every environment today, so they are declared once
+  # here. Override a single bucket in a profile file if that ever changes.
+  rate-limit:
+    global:
+      enabled: true
+      requests-per-minute: 100
+      requests-per-hour: 1000
+      requests-per-day: 10000
+      burst-capacity: 200
+    auth:
+      enabled: true
+      requests-per-minute: 10
+      requests-per-hour: 100
+      requests-per-day: 1000
+      burst-capacity: 20
+    upload:
+      enabled: true
+      requests-per-minute: 5
+      requests-per-hour: 50
+      requests-per-day: 500
+      burst-capacity: 10
+    api:
+      enabled: true
+      requests-per-minute: 60
+      requests-per-hour: 600
+      requests-per-day: 6000
+      burst-capacity: 100
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Keep this minimal. Never expose env/configprops/beans/shutdown.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${APP_NAME:springapp}
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  # Directory only - logback-spring.xml builds the file names from it.
+  file:
+    path: ${LOG_PATH:logs}
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.spring.app: ${LOG_LEVEL:INFO}

@@ -192,32 +192,36 @@ CREATE DATABASE springapp_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 ### **3. Configuration**
 
+The `application*.yml` files are committed and already contain every setting —
+you never edit them to get started. They hold only structure and
+`${ENV_VAR:default}` placeholders. Real values go in a `.env` file, which is
+git-ignored:
+
 ```bash
-cp src/main/resources/application.example.properties src/main/resources/application.properties
+cp .env.example .env
 ```
 
-**Required Configuration:**
+Every variable has a working local default, so `.env` can stay empty for a
+first run. Fill in what you actually need:
 
 ```properties
 # Database
-spring.datasource.url=jdbc:mysql://localhost:3306/springapp_db
-spring.datasource.username=your_username
-spring.datasource.password=your_password
+DB_HOST=localhost
+DB_NAME=springapp_db
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
 
-# JWT
-application.security.jwt.secret-key=your-super-secret-key-here
-application.security.jwt.expiration=86400000
-application.security.jwt.refresh-token.expiration=604800000
-
-# Redis
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
+# JWT - must be Base64 and >= 256-bit. Generate one with:
+#   openssl rand -base64 48
+JWT_SECRET_KEY=
 
 # Email (for OTP)
-spring.mail.host=smtp.gmail.com
-spring.mail.username=your-email@gmail.com
-spring.mail.password=your-app-password
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
 ```
+
+> The schema is owned by Flyway and Hibernate only validates against it. For
+> throw-away local work, set `JPA_DDL_AUTO=update` and `FLYWAY_ENABLED=false`.
 
 ### **4. Build & Run**
 
@@ -435,56 +439,36 @@ src/main/java/com/spring/app/
 
 ## 🔍 **Configuration Details**
 
-### **Database Configuration**
+### **How configuration is layered**
 
-```properties
-# MySQL Configuration
-spring.datasource.url=jdbc:mysql://localhost:3306/springapp_db
-spring.datasource.username=root
-spring.datasource.password=
-spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+| File | Committed? | Contains |
+|---|---|---|
+| `src/main/resources/application.yml` | yes | Every setting, as structure + `${ENV_VAR:default}`. Safe local-dev defaults. |
+| `src/main/resources/application-dev.yml` | yes | **Only** what dev changes (SQL logging, DevTools, debug levels). |
+| `src/main/resources/application-prod.yml` | yes | **Only** what prod changes. Most placeholders have *no* fallback, so a missing variable stops the deployment. |
+| `.env.example` | yes | The catalogue of every variable, with comments. |
+| `.env` | **no** | Your real values. Loaded via `spring.config.import`. |
 
-# JPA/Hibernate Configuration
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=true
-spring.jpa.properties.hibernate.format_sql=true
-spring.jpa.open-in-view=false
-```
+Profile files are merged on top of `application.yml` — never copy a block from
+one file into another, only declare the difference.
 
-### **Redis Configuration**
+### **Namespace convention**
 
-```properties
-# Redis Configuration
-spring.data.redis.host=localhost
-spring.data.redis.port=6379
-spring.data.redis.password=
-spring.data.redis.timeout=60000
+- `spring.*` — framework properties only.
+- `application.*` — everything this application owns, bound by the type-safe
+  classes in `configs/properties/` and validated at startup with `@Validated`.
 
-# Cache Configuration
-spring.cache.type=redis
-spring.cache.redis.time-to-live=600000
-```
+Because every `application.*` key maps to a field on one of those classes, a
+typo or a stale key fails fast instead of silently binding to nothing.
 
-### **Email Configuration**
+### **Environment variables**
 
-```properties
-# SMTP Configuration
-spring.mail.host=smtp.gmail.com
-spring.mail.port=587
-spring.mail.username=your-email@gmail.com
-spring.mail.password=your-app-password
-spring.mail.properties.mail.smtp.auth=true
-spring.mail.properties.mail.smtp.starttls.enable=true
-```
-
-### **Async Configuration**
-
-```properties
-# Async Processing
-async.core-size=2
-async.max-size=10
-async.queue-capacity=100
-```
+`.env.example` is the single source of truth — it lists every variable the
+application reads, grouped by area, and marks which ones become **required**
+in production. Both `docker-compose.yml` and `docker-compose.prod.yml` feed the
+container from the same `.env` via `env_file`, and only override the handful of
+values that must differ inside the Compose network (`DB_HOST=mysql`,
+`REDIS_HOST=redis`, …). Nothing is duplicated, so nothing can drift.
 
 ---
 

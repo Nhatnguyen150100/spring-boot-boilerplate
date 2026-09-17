@@ -1,4 +1,10 @@
-version: "3.8"
+# =============================================================================
+#  Production stack.
+#
+#  Requires a .env file next to this one (see .env.example). Unlike the dev
+#  stack, .env is mandatory here and no value falls back to a development
+#  default - a missing variable must stop the deployment.
+# =============================================================================
 
 services:
   # ===============================
@@ -9,7 +15,8 @@ services:
     container_name: springapp-mysql-prod
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      # Separate from DB_PASSWORD: the app must not connect as root.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USERNAME}
       MYSQL_PASSWORD: ${DB_PASSWORD}
@@ -17,8 +24,10 @@ services:
     ports:
       - "127.0.0.1:${DB_PORT:-3306}:3306"
     volumes:
+      # db/migrations is NOT mounted into docker-entrypoint-initdb.d: Flyway
+      # owns the schema, and replaying the same files here would leave
+      # flyway_schema_history out of step with the database.
       - mysql_prod_data:/var/lib/mysql
-      - ./src/main/resources/db/migrations:/docker-entrypoint-initdb.d
     command: 
       - --default-authentication-plugin=mysql_native_password
       - --character-set-server=utf8mb4
@@ -27,7 +36,7 @@ services:
       - --innodb-buffer-pool-size=1G
       - --innodb-log-file-size=256M
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -80,61 +89,20 @@ services:
       dockerfile: ./Dockerfile
     ports:
       - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+    # Everything the app reads comes from .env, so this file never has to repeat
+    # (and never has to be kept in sync with) the full variable list.
+    env_file:
+      - .env
     environment:
-      # Profile
+      # Only the values that MUST differ inside the Compose network, plus the
+      # production hard-defaults that must not be overridable from .env.
       - SPRING_PROFILES_ACTIVE=prod
-      
-      # Database
       - DB_HOST=mysql
       - DB_PORT=3306
-      - DB_NAME=${DB_NAME}
-      - DB_USERNAME=${DB_USERNAME}
-      - DB_PASSWORD=${DB_PASSWORD}
-      
-      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_SSL_ENABLED=${REDIS_SSL_ENABLED:-false}
-      
-      # JWT (MUST be set in production)
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_EXPIRATION=${JWT_EXPIRATION:-86400000}
-      - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-604800000}
-      
-      # Mail
-      - MAIL_HOST=${MAIL_HOST}
-      - MAIL_PORT=${MAIL_PORT:-587}
-      - MAIL_FROM=${MAIL_FROM}
-      - MAIL_USERNAME=${MAIL_USERNAME}
-      - MAIL_PASSWORD=${MAIL_PASSWORD}
-      
-      # OAuth2
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - OAUTH2_REDIRECT_URI=${OAUTH2_REDIRECT_URI}
-      
-      # Frontend
-      - FRONTEND_URL=${FRONTEND_URL}
-      
-      # File Upload
-      - UPLOAD_DIR=${UPLOAD_DIR:-/app/uploads}
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10MB}
-      - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-10MB}
-      
-      # CORS
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
-      
-      # Actuator
-      - ACTUATOR_ALLOWED_ORIGINS=${ACTUATOR_ALLOWED_ORIGINS:-}
-      - DEPLOYMENT_REGION=${DEPLOYMENT_REGION:-unknown}
-      
-      # Swagger
-      - SWAGGER_ENABLED=${SWAGGER_ENABLED:-false}
-      
-      # Logging
-      - LOG_LEVEL=INFO
-      - LOG_FILE_PATH=/var/log/springapp/application.log
+      - UPLOAD_DIR=/app/uploads
+      - LOG_PATH=/var/log/springapp
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/var/log/springapp

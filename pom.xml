@@ -82,6 +82,12 @@
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- In-memory database so `mvn test` needs no running MySQL. -->
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.mapstruct</groupId>
       <artifactId>mapstruct</artifactId>
@@ -121,12 +127,17 @@
       <version>0.12.6</version>
       <scope>runtime</scope>
     </dependency>
+    <!-- Builds IDE metadata from the @ConfigurationProperties classes. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <optional>true</optional>
+    </dependency>
     <!--
 		https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-validation -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
-      <version>3.5.0</version>
     </dependency>
     <dependency>
       <groupId>org.springdoc</groupId>
@@ -138,7 +149,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-mail</artifactId>
-      <version>3.5.0</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/org.jsoup/jsoup -->
@@ -152,7 +162,6 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-redis</artifactId>
-      <version>3.5.0</version>
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/io.lettuce/lettuce-core -->
@@ -197,6 +206,16 @@
               <groupId>org.mapstruct</groupId>
               <artifactId>mapstruct-processor</artifactId>
               <version>1.6.3</version>
+            </path>
+            <!--
+              Generates spring-configuration-metadata.json from the
+              @ConfigurationProperties classes, so IDE completion for
+              application*.yml is derived from the code instead of a
+              hand-maintained file that drifts.
+            -->
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
             </path>
           </annotationProcessorPaths>
         </configuration>

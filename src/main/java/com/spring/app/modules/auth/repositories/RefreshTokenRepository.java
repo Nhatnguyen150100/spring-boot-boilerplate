@@ -20,10 +20,10 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
   List<RefreshToken> findAllByUserAndIsRevokedFalse(User user);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query("UPDATE RefreshToken t SET t.revoked = true WHERE t.user = :user AND t.revoked = false")
+  @Query("UPDATE RefreshToken t SET t.isRevoked = true WHERE t.user = :user AND t.isRevoked = false")
   void revokeAllByUser(@Param("user") User user);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query("DELETE FROM RefreshToken t WHERE t.expiryDate < :now OR t.revoked = true")
+  @Query("DELETE FROM RefreshToken t WHERE t.expiryDate < :now OR t.isRevoked = true")
   void deleteExpiredOrRevokedTokens(@Param("now") Instant now);
 }

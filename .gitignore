@@ -4,10 +4,18 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
-application.properties
-application.yml
-application-*.properties
-application-*.yml
+### Secrets - never commit ###
+# application*.yml under src/main/resources IS committed on purpose: those files
+# only contain structure and ${ENV_VAR} placeholders. Real values live here:
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.properties
+*-secret.yml
+*-secrets.yml
+*.p12
+*.jks
 
 ### STS ###
 .apt_generated

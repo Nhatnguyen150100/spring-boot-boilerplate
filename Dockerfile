@@ -24,8 +24,8 @@ WORKDIR /app
 # Copy only the built jar from builder stage
 COPY --from=builder target/springapp-0.0.1-SNAPSHOT.jar app.jar
 
-# Expose port
-EXPOSE 8000
+# Expose port (matches SERVER_PORT's default in application.yml)
+EXPOSE 8080
 
 # Run application
 ENTRYPOINT ["java", "-jar", "app.jar"]

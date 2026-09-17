@@ -2,6 +2,7 @@ package com.spring.app.configs;
 
 import java.util.Properties;
 
+import lombok.NoArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -32,10 +33,12 @@ public class MailConfig {
     sender.setPort(mailProperties.getPort());
     sender.setUsername(mailProperties.getUsername());
     sender.setPassword(mailProperties.getPassword());
+    sender.setDefaultEncoding(mailProperties.getDefaultEncoding());
 
     Properties props = sender.getJavaMailProperties();
     props.put("mail.smtp.auth", mailProperties.isSmtpAuth());
     props.put("mail.smtp.starttls.enable", mailProperties.isStartTls());
+    props.put("mail.smtp.ssl.enable", mailProperties.isSslEnable());
 
     return sender;
   }

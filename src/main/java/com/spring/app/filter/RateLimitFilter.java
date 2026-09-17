@@ -20,6 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import java.io.IOException;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -102,15 +103,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
   }
 
   private boolean isTrustedProxy(String remoteAddr) {
-    if (applicationProperties.getTrustedProxies() == null || applicationProperties.getTrustedProxies().isBlank()) {
+    List<String> proxies = applicationProperties.getTrustedProxies();
+    if (proxies == null || proxies.isEmpty()) {
       return false;
     }
-    String[] proxies = applicationProperties.getTrustedProxies().split(",");
-    for (String proxy : proxies) {
-      if (remoteAddr.equals(proxy.trim())) {
-        return true;
-      }
-    }
-    return false;
+    return proxies.stream()
+        .map(String::trim)
+        .anyMatch(remoteAddr::equals);
   }
 }

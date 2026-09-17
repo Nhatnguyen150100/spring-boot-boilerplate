@@ -16,7 +16,7 @@ import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
 
-import java.util.Arrays;
+import java.util.List;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,8 +65,8 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
   }
 
   private boolean isEmailDomainAllowed(String email) {
-    String allowed = applicationProperties.getOauth2AllowedEmailDomains();
-    if (allowed == null || allowed.isBlank()) {
+    List<String> allowed = applicationProperties.getOauth2AllowedEmailDomains();
+    if (allowed == null || allowed.isEmpty()) {
       return true; // No whitelist configured -> accept any domain.
     }
     int at = email.lastIndexOf('@');
@@ -74,7 +74,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
       return false;
     }
     String domain = email.substring(at + 1).toLowerCase();
-    return Arrays.stream(allowed.split(","))
+    return allowed.stream()
         .map(d -> d.trim().toLowerCase())
         .filter(d -> !d.isEmpty())
         .anyMatch(domain::equals);

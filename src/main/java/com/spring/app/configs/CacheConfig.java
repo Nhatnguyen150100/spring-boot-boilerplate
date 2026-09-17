@@ -1,7 +1,5 @@
 package com.spring.app.configs;
 
-import java.time.Duration;
-
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -24,9 +22,6 @@ public class CacheConfig {
 
   private final CacheProperties cacheProperties;
 
-  private static final int USERS_CACHE_TTL_MINUTES = 10;
-  private static final int TOKENS_CACHE_TTL_MINUTES = 5;
-
   // Cache names
   public static final String USERS_CACHE = "users";
   public static final String USER_PROFILE = "userProfile";
@@ -39,31 +34,32 @@ public class CacheConfig {
    * Configuration for the cache manager is as follows:
    * </p>
    * <ul>
-   * <li>Default TTL is {@value #DEFAULT_TTL_MINUTES} minutes.</li>
+   * <li>TTLs come from {@code application.cache.*} rather than constants, so
+   * they can be tuned per environment.</li>
    * <li>Caches are serialized with a StringRedisSerializer for keys and a
    * GenericJackson2JsonRedisSerializer for values.</li>
-   * <li>The cache named {@value #USERS_CACHE} has a TTL of
-   * {@value #USERS_CACHE_TTL_MINUTES} minutes.</li>
-   * <li>The cache named {@value #TOKENS_CACHE} has a TTL of
-   * {@value #TOKENS_CACHE_TTL_MINUTES} minutes.</li>
    * </ul>
    */
   @Bean
   CacheManager cacheManager(RedisConnectionFactory connectionFactory) {
     RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-        .entryTtl(Duration.ofMillis(cacheProperties.getTimeToLive()))
+        .entryTtl(cacheProperties.getDefaultTtl())
         .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
         .serializeValuesWith(
             RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
 
+    if (!cacheProperties.isCacheNullValues()) {
+      defaultConfig = defaultConfig.disableCachingNullValues();
+    }
+
     return RedisCacheManager.builder(connectionFactory)
         .cacheDefaults(defaultConfig)
         .withCacheConfiguration(USERS_CACHE,
-            defaultConfig.entryTtl(Duration.ofMinutes(USERS_CACHE_TTL_MINUTES)))
+            defaultConfig.entryTtl(cacheProperties.getUsersTtl()))
         .withCacheConfiguration(USER_PROFILE,
-            defaultConfig.entryTtl(Duration.ofMinutes(USERS_CACHE_TTL_MINUTES)))
+            defaultConfig.entryTtl(cacheProperties.getUsersTtl()))
         .withCacheConfiguration(TOKENS_CACHE,
-            defaultConfig.entryTtl(Duration.ofMinutes(TOKENS_CACHE_TTL_MINUTES)))
+            defaultConfig.entryTtl(cacheProperties.getTokensTtl()))
         .build();
   }
 }

@@ -1,6 +1,12 @@
 <configuration scan="true" scanPeriod="30 seconds">
 
-  <property name="LOG_PATH" value="logs" />
+  <!--
+    Read the log directory from Spring config (logging.file.path, itself backed
+    by the LOG_PATH env var) instead of hard-coding it. Without this the
+    logging.file.* properties are silently ignored, because this file replaces
+    Boot's default file appender.
+  -->
+  <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="logs" />
   <property name="LOG_FILE" value="${LOG_PATH}/application.log" />
   <property name="LOG_FILE_ERROR" value="${LOG_PATH}/error.log" />
 

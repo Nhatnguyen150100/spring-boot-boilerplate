@@ -1,8 +1,11 @@
 package com.spring.app.configs;
 
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisPassword;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -61,14 +64,33 @@ public class RedisConfig {
 
     template.afterPropertiesSet();
 
-    try {
-      connectionFactory.getConnection().ping();
-      log.info("Successfully connected to Redis");
-    } catch (Exception e) {
-      log.error("Failed to connect to Redis: {}", e.getMessage(), e);
-      throw new RuntimeException("Redis connection failed", e);
-    }
-
     return template;
+  }
+
+  /**
+   * Verifies Redis is reachable, and stops startup if it is not.
+   *
+   * <p>
+   * This deliberately lives outside {@link #redisTemplate} - a bean factory
+   * method should build an object, not perform I/O. Keeping the check separate
+   * also makes it switchable: {@code application.redis.fail-fast=false} lets
+   * the context start without Redis, which is what the test profile needs.
+   * </p>
+   */
+  @Bean
+  @ConditionalOnProperty(name = "application.redis.fail-fast", havingValue = "true", matchIfMissing = true)
+  ApplicationRunner redisConnectionCheck(RedisConnectionFactory connectionFactory) {
+    return args -> {
+      try (RedisConnection connection = connectionFactory.getConnection()) {
+        connection.ping();
+        log.info("Successfully connected to Redis");
+      } catch (Exception e) {
+        throw new IllegalStateException(
+            "Redis is unreachable. Rate limiting, caching and refresh tokens all depend on it - "
+                + "check REDIS_HOST/REDIS_PORT/REDIS_PASSWORD, or set application.redis.fail-fast=false "
+                + "to start anyway.",
+            e);
+      }
+    };
   }
 }

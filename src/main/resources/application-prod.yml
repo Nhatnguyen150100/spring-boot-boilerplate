@@ -1,0 +1,93 @@
+# =============================================================================
+#  PROD profile - DIFFERENCES from application.yml only.
+#
+#  Most ${VAR} below are written WITHOUT a fallback on purpose: a missing
+#  environment variable must stop the deployment loudly rather than silently
+#  inherit a development default.
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_HOST}:${DB_PORT}/${DB_NAME}?useSSL=true&requireSSL=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      minimum-idle: ${DB_POOL_MIN_IDLE:10}
+
+  jpa:
+    hibernate:
+      # Never anything but validate here - Flyway owns the schema.
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  flyway:
+    enabled: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            redirect-uri: ${GOOGLE_REDIRECT_URI}
+
+server:
+  # TLS is usually terminated at the load balancer; switch SSL_ENABLED=true only
+  # when this process itself must serve HTTPS, and then set the keystore vars.
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE:}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
+  forward-headers-strategy: native
+
+application:
+  frontend-url: ${FRONTEND_URL}
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+  trusted-proxies: ${TRUSTED_PROXIES:}
+  oauth2-allowed-email-domains: ${OAUTH2_ALLOWED_EMAIL_DOMAINS:}
+
+  security:
+    jwt:
+      # No fallback: startup fails if JWT_SECRET_KEY is unset.
+      secret-key: ${JWT_SECRET_KEY}
+
+  file:
+    storage:
+      upload-dir: ${UPLOAD_DIR:/app/uploads}
+
+  mail:
+    app: ${MAIL_APP_NAME:SPRING_APP}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT:587}
+    from: ${MAIL_FROM}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+logging:
+  file:
+    path: ${LOG_PATH:/var/log/springapp}
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.spring.app: ${LOG_LEVEL:INFO}

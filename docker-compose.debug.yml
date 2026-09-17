@@ -4,8 +4,13 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+    env_file:
+      - path: .env
+        required: false
     environment:
-      JAVA_OPTS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005,quiet=y
+      # JAVA_TOOL_OPTIONS, not JAVA_OPTS: the Dockerfile entrypoint is a plain
+      # `java -jar`, and only JAVA_TOOL_OPTIONS is picked up by the JVM itself.
+      JAVA_TOOL_OPTIONS: -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005,quiet=y
     ports:
-      - 8000:8000
+      - 8080:8080
       - 5005:5005

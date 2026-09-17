@@ -19,35 +19,24 @@ public class AsyncConfig {
   private final AsyncProperties asyncProperties;
 
   private final static String TASK_THREAD_NAME_PREFIX = "ASYNC-TASK-";
-
-  private final static int EMAIL_CORE_POOL_SIZE = 2;
-  private final static int EMAIL_MAX_POOL_SIZE = 5;
-  private final static int EMAIL_QUEUE_CAPACITY = 10;
   private final static String EMAIL_THREAD_NAME_PREFIX = "EMAIL-TASK-";
 
   @Bean(name = "taskExecutor")
   Executor taskExecutor() {
-    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-
-    final int TASK_CORE_POOL_SIZE = asyncProperties.getCoreSize();
-    final int TASK_MAX_POOL_SIZE = asyncProperties.getMaxSize();
-    final int TASK_QUEUE_CAPACITY = asyncProperties.getQueueCapacity();
-
-    executor.setCorePoolSize(TASK_CORE_POOL_SIZE);
-    executor.setMaxPoolSize(TASK_MAX_POOL_SIZE);
-    executor.setQueueCapacity(TASK_QUEUE_CAPACITY);
-    executor.setThreadNamePrefix(TASK_THREAD_NAME_PREFIX);
-    executor.initialize();
-    return executor;
+    return buildExecutor(asyncProperties.getTask(), TASK_THREAD_NAME_PREFIX);
   }
 
   @Bean(name = "emailExecutor")
   Executor emailExecutor() {
+    return buildExecutor(asyncProperties.getEmail(), EMAIL_THREAD_NAME_PREFIX);
+  }
+
+  private Executor buildExecutor(AsyncProperties.Pool pool, String threadNamePrefix) {
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(EMAIL_CORE_POOL_SIZE);
-    executor.setMaxPoolSize(EMAIL_MAX_POOL_SIZE);
-    executor.setQueueCapacity(EMAIL_QUEUE_CAPACITY);
-    executor.setThreadNamePrefix(EMAIL_THREAD_NAME_PREFIX);
+    executor.setCorePoolSize(pool.getCoreSize());
+    executor.setMaxPoolSize(pool.getMaxSize());
+    executor.setQueueCapacity(pool.getQueueCapacity());
+    executor.setThreadNamePrefix(threadNamePrefix);
     executor.initialize();
     return executor;
   }

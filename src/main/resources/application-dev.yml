@@ -1,0 +1,28 @@
+# =============================================================================
+#  DEV profile - DIFFERENCES from application.yml only.
+#  Everything not listed here is inherited. Never set spring.profiles.active in
+#  a profile-specific file: Spring Boot rejects it (InvalidConfigDataProperty).
+# =============================================================================
+
+spring:
+  jpa:
+    show-sql: ${JPA_SHOW_SQL:true}
+    properties:
+      hibernate:
+        format_sql: ${JPA_FORMAT_SQL:true}
+
+  devtools:
+    restart:
+      enabled: true
+    livereload:
+      enabled: true
+
+management:
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.spring.app: ${LOG_LEVEL:DEBUG}
+    org.springframework.security: ${LOG_LEVEL:DEBUG}

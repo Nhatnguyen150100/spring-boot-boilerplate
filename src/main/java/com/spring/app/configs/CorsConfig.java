@@ -24,7 +24,11 @@ public class CorsConfig {
   private final ApplicationProperties applicationProperties;
 
   private @NonNull List<String> getAllowedOrigins() {
-    return Arrays.asList(applicationProperties.getFrontendUrl().split(","));
+    return applicationProperties.getCors().getAllowedOrigins();
+  }
+
+  private long getMaxAgeSeconds() {
+    return applicationProperties.getCors().getMaxAgeSeconds();
   }
 
   private @NonNull List<String> getAllowedMethods() {
@@ -60,7 +64,7 @@ public class CorsConfig {
         "X-Frame-Options"));
 
     configuration.setAllowCredentials(true);
-    configuration.setMaxAge(3600L);
+    configuration.setMaxAge(getMaxAgeSeconds());
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", configuration);
@@ -79,7 +83,7 @@ public class CorsConfig {
             .allowedOrigins(allowedOrigins.toArray(String[]::new))
             .allowedMethods(allowedMethods.toArray(String[]::new))
             .allowCredentials(true)
-            .maxAge(3600);
+            .maxAge(getMaxAgeSeconds());
       }
     };
   }

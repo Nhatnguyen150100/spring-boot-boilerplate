@@ -1,0 +1,49 @@
+# =============================================================================
+#  TEST profile - keeps `mvn test` hermetic.
+#
+#  Every value here is a LITERAL, never a ${ENV_VAR} placeholder. That matters:
+#  application.yml imports the developer's local .env, and a literal cannot be
+#  overridden by it. Tests must not pass or fail based on what happens to be
+#  running on the machine.
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:springapp;DB_CLOSE_DELAY=-1;MODE=MySQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      # The schema comes from the entities here, not from Flyway.
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.H2Dialect
+
+  flyway:
+    # The migrations are MySQL-specific, so they are not replayed against H2.
+    enabled: false
+
+application:
+  redis:
+    # No Redis running during tests; the context must still come up.
+    fail-fast: false
+  security:
+    jwt:
+      # Test-only, and deliberately not the dev fallback from application.yml -
+      # so the test still passes if that value is ever removed.
+      secret-key: dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==
+  cors:
+    allowed-origins: http://localhost:3000
+  mail:
+    host: localhost
+    port: 1025
+
+logging:
+  level:
+    root: WARN
+    com.spring.app: INFO

@@ -1,4 +1,10 @@
-version: "3.8"
+# =============================================================================
+#  Local development stack.
+#
+#  Values come from .env (see .env.example). Compose uses that same file both
+#  for ${...} interpolation here and, via env_file, for the app container - so
+#  there is exactly one place to change a value.
+# =============================================================================
 
 services:
   # ===============================
@@ -9,19 +15,23 @@ services:
     container_name: springapp-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpassword}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
       MYSQL_DATABASE: ${DB_NAME:-db_test_spring}
-      MYSQL_USER: ${DB_USERNAME:-root}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-rootpassword}
+      # The MySQL image refuses MYSQL_USER=root, so DB_USERNAME must name a
+      # dedicated application user when running through Compose.
+      MYSQL_USER: ${DB_USERNAME:-springapp}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-springapp}
       TZ: UTC
     ports:
       - "${DB_PORT:-3306}:3306"
     volumes:
+      # db/migrations is NOT mounted into docker-entrypoint-initdb.d: Flyway
+      # owns the schema, and letting MySQL replay the same files would leave
+      # flyway_schema_history out of step with the database.
       - mysql_data:/var/lib/mysql
-      - ./src/main/resources/db/migrations:/docker-entrypoint-initdb.d
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-rootpassword}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -59,49 +69,19 @@ services:
       dockerfile: ./Dockerfile
     ports:
       - "${SERVER_PORT:-8080}:8080"
+    # Everything the app reads comes from .env, so this file never has to repeat
+    # (and never has to be kept in sync with) the full variable list.
+    env_file:
+      - path: .env
+        required: false
     environment:
-      # Profile
+      # Only the values that MUST differ inside the Compose network.
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
-      
-      # Database
       - DB_HOST=mysql
       - DB_PORT=3306
-      - DB_NAME=${DB_NAME:-db_test_spring}
-      - DB_USERNAME=${DB_USERNAME:-root}
-      - DB_PASSWORD=${DB_PASSWORD:-rootpassword}
-      
-      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      
-      # JWT
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-secret-key-in-production}
-      - JWT_EXPIRATION=${JWT_EXPIRATION:-86400000}
-      - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-604800000}
-      
-      # Mail
-      - MAIL_HOST=${MAIL_HOST:-smtp.gmail.com}
-      - MAIL_PORT=${MAIL_PORT:-587}
-      - MAIL_FROM=${MAIL_FROM:-}
-      - MAIL_USERNAME=${MAIL_USERNAME:-}
-      - MAIL_PASSWORD=${MAIL_PASSWORD:-}
-      
-      # OAuth2
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - OAUTH2_REDIRECT_URI=${OAUTH2_REDIRECT_URI:-http://localhost:8080/api/v1/auth/oauth2/code/google}
-      
-      # Frontend
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
-      
-      # File Upload
-      - UPLOAD_DIR=${UPLOAD_DIR:-uploads}
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-10MB}
-      - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-10MB}
-      
-      # Logging
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - UPLOAD_DIR=/app/uploads
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs

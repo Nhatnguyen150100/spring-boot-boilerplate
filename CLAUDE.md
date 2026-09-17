@@ -17,14 +17,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Database Setup
 1. Create MySQL database: `db_test_spring`
-2. Configure credentials in `application.properties`
-3. Flyway migrations are disabled by default (`spring.flyway.enabled=false`)
-4. JPA will auto-update schema (`spring.jpa.hibernate.ddl-auto=update`)
+2. Copy `.env.example` to `.env` and set `DB_*` there (never in the YAML files)
+3. Flyway owns the schema (`FLYWAY_ENABLED=true` by default)
+4. Hibernate only validates against it (`JPA_DDL_AUTO=validate`). For
+   throw-away local work, set `JPA_DDL_AUTO=update` + `FLYWAY_ENABLED=false`
 
 ### Configuration Files
-- Main config: `src/main/resources/application.properties`
-- Template: `src/main/resources/application.example.properties`
-- Environment-specific: `application-{profile}.properties`
+All YAML below is committed and contains **no secrets** — only structure and
+`${ENV_VAR:default}` placeholders.
+
+- Base (all profiles): `src/main/resources/application.yml`
+- Profile deltas: `application-dev.yml`, `application-prod.yml` — these declare
+  **only the differences**; Spring merges them onto the base. Never copy a
+  block between them, and never set `spring.profiles.active` in a
+  profile-specific file (Spring Boot rejects it).
+- Variable catalogue: `.env.example` (committed) → `.env` (git-ignored, holds
+  the real values, loaded via `spring.config.import`)
+- Tests: `src/test/resources/application-test.yml` (H2, Flyway off, Redis
+  fail-fast off) so `mvn test` needs nothing running. Its values are literals,
+  never `${ENV_VAR}`, so a developer's `.env` cannot change a test result.
+
+Namespace rule: `spring.*` is for framework properties only; everything this
+application owns lives under `application.*`, bound by the `@ConfigurationProperties`
+classes in `configs/properties/` and validated at startup via `@Validated`.
+Adding a setting means adding a field there — a key that matches no field fails
+fast rather than binding to nothing.
 
 ## Architecture Overview
 
