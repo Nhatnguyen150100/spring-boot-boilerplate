@@ -34,14 +34,32 @@ All YAML below is committed and contains **no secrets** — only structure and
 - Variable catalogue: `.env.example` (committed) → `.env` (git-ignored, holds
   the real values, loaded via `spring.config.import`)
 - Tests: `src/test/resources/application-test.yml` (H2, Flyway off, Redis
-  fail-fast off) so `mvn test` needs nothing running. Its values are literals,
-  never `${ENV_VAR}`, so a developer's `.env` cannot change a test result.
+  fail-fast off) so `mvn test` needs nothing running. Every property bound to
+  a `@jakarta.validation` constraint (JWT expirations, cache TTLs, async pool
+  sizes, mail, upload-dir...) is overridden here with a literal, never
+  `${ENV_VAR}`. This matters for two separate leaks, not just one: a
+  developer's `.env` **file** cannot reach these keys, and neither can a
+  plain OS environment variable of the same name (e.g. a stray `export
+  ASYNC_TASK_CORE_SIZE=0` in a dev shell or CI runner) — Spring's placeholder
+  resolution checks OS env vars regardless of whether `.env` exists, so only
+  a literal override actually blocks it. Properties without a validation
+  constraint are NOT overridden here and can still pick up an ambient env
+  var; that's fine since a bad value there can't fail the build.
 
 Namespace rule: `spring.*` is for framework properties only; everything this
 application owns lives under `application.*`, bound by the `@ConfigurationProperties`
 classes in `configs/properties/` and validated at startup via `@Validated`.
-Adding a setting means adding a field there — a key that matches no field fails
-fast rather than binding to nothing.
+Adding a setting means adding a field there. Strict binding
+(`ignoreUnknownFields = false`) is enabled on the six leaf classes —
+`JwtProperties`, `CacheProperties`, `MailProperties`, `AsyncProperties`,
+`RateLimitProperties`, `FileStorageProperties` — so a typo'd key under one of
+their prefixes fails startup instead of binding to nothing. `ApplicationProperties`
+itself (the bare `application.*` prefix, covering `cors`, `redis`,
+`frontend-url`, `trusted-proxies`, `oauth2-allowed-email-domains`) is left on
+Spring Boot's default relaxed binding, because it is the shared parent prefix
+for all the others; turning on strict binding there would make every child
+class's keys look "unknown" to it and break startup entirely. A typo under
+those specific keys is still silently ignored.
 
 ## Architecture Overview
 

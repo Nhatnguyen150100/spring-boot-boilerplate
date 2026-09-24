@@ -11,7 +11,7 @@ import lombok.Data;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.file.storage")
+@ConfigurationProperties(prefix = "application.file.storage", ignoreUnknownFields = false)
 public class FileStorageProperties {
 
   @NotBlank(message = "application.file.storage.upload-dir is required")

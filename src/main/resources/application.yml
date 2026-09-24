@@ -27,7 +27,7 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
-  datasource:
+  datasource: 
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:db_test_spring}?useSSL=${DB_USE_SSL:false}&serverTimezone=UTC&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
@@ -233,5 +233,5 @@ logging:
   file:
     path: ${LOG_PATH:logs}
   level:
-    root: ${LOG_LEVEL:INFO}
-    com.spring.app: ${LOG_LEVEL:INFO}
+    root: ${ROOT_LOG_LEVEL:INFO}
+    com.spring.app: ${APP_LOG_LEVEL:INFO}

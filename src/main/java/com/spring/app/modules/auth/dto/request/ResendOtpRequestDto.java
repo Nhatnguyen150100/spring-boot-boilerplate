@@ -1,16 +1,12 @@
 package com.spring.app.modules.auth.dto.request;
 
+import com.spring.app.common.validation.annotations.ValidEmail;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import lombok.Builder;
 
 @Builder
 public record ResendOtpRequestDto(
-  @Email(message = "Email is not valid", regexp = "^[a-zA-Z0-9_!#$%&'*+/=?`{|}~^.-]+@[a-zA-Z0-9.-]+$")
-  @NotEmpty(message = "Email cannot be empty")
-  @NotBlank(message = "Email is required")
+  @ValidEmail
   @Schema(description = "Email address of the user", example = "user1@gmail.com")
   String email
 ) {}

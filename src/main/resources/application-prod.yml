@@ -59,9 +59,6 @@ application:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
-  trusted-proxies: ${TRUSTED_PROXIES:}
-  oauth2-allowed-email-domains: ${OAUTH2_ALLOWED_EMAIL_DOMAINS:}
-
   security:
     jwt:
       # No fallback: startup fails if JWT_SECRET_KEY is unset.
@@ -72,9 +69,7 @@ application:
       upload-dir: ${UPLOAD_DIR:/app/uploads}
 
   mail:
-    app: ${MAIL_APP_NAME:SPRING_APP}
     host: ${MAIL_HOST}
-    port: ${MAIL_PORT:587}
     from: ${MAIL_FROM}
     username: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
@@ -88,6 +83,3 @@ springdoc:
 logging:
   file:
     path: ${LOG_PATH:/var/log/springapp}
-  level:
-    root: ${LOG_LEVEL:INFO}
-    com.spring.app: ${LOG_LEVEL:INFO}

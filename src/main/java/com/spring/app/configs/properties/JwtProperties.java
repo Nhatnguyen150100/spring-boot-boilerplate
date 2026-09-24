@@ -21,7 +21,7 @@ import lombok.Data;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.security.jwt")
+@ConfigurationProperties(prefix = "application.security.jwt", ignoreUnknownFields = false)
 public class JwtProperties {
 
   /** Base64-encoded secret. Must be at least 256-bit for HS256. */

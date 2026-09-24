@@ -150,18 +150,11 @@ public class RateLimitManagerService {
   }
 
   private RateLimitProperties.BaseRateLimitConfig getConfigForType(ERateLimitEndpoint endpointType) {
-    switch (endpointType) {
-      case AUTH:
-        return rateLimitProperties.getAuth();
-      case UPLOAD:
-        return rateLimitProperties.getUpload();
-      case API:
-        return rateLimitProperties.getApi();
-      case GLOBAL:
-        return rateLimitProperties.getGlobal();
-      default:
-        log.warn("Unknown endpoint type: {}", endpointType);
-        return null;
-    }
+    return switch (endpointType) {
+      case AUTH -> rateLimitProperties.getAuth();
+      case UPLOAD -> rateLimitProperties.getUpload();
+      case API -> rateLimitProperties.getApi();
+      case GLOBAL -> rateLimitProperties.getGlobal();
+    };
   }
 }

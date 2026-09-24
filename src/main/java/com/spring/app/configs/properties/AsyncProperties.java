@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.async")
+@ConfigurationProperties(prefix = "application.async", ignoreUnknownFields = false)
 public class AsyncProperties {
 
   /** General-purpose pool, exposed as the {@code taskExecutor} bean. */

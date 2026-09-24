@@ -1,16 +1,13 @@
 package com.spring.app.modules.auth.dto.request;
 
 import com.spring.app.common.validation.annotations.StrongPassword;
+import com.spring.app.common.validation.annotations.ValidEmail;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
 public record AuthRequestDto(
 
-    @Email(message = "Email format is not valid") 
-    @Size(max = 255, message = "Email must be less than 255 characters") 
-    @NotBlank(message = "Email is required") 
+    @ValidEmail
     @Schema(description = "Email address of the user", example = "user1@gmail.com")
     String email,
 

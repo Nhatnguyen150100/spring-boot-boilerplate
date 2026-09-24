@@ -1,10 +1,17 @@
 # =============================================================================
 #  TEST profile - keeps `mvn test` hermetic.
 #
-#  Every value here is a LITERAL, never a ${ENV_VAR} placeholder. That matters:
-#  application.yml imports the developer's local .env, and a literal cannot be
-#  overridden by it. Tests must not pass or fail based on what happens to be
-#  running on the machine.
+#  Every value here is a LITERAL, never a ${ENV_VAR} placeholder. That matters
+#  for two separate reasons:
+#    1. application.yml imports the developer's local .env FILE, and a literal
+#       here cannot be overridden by it.
+#    2. Spring's placeholder resolution (${ASYNC_TASK_CORE_SIZE:5} etc. in
+#       application.yml) also checks plain OS environment variables, which a
+#       literal here shields against too. Any property bound to an
+#       @jakarta.validation constraint MUST be overridden with a literal below
+#       -- otherwise an exported shell variable of the same name (common in a
+#       long-lived dev shell or a CI runner) can fail validation and break the
+#       build for a reason that has nothing to do with the code under test.
 # =============================================================================
 
 spring:
@@ -37,11 +44,34 @@ application:
       # Test-only, and deliberately not the dev fallback from application.yml -
       # so the test still passes if that value is ever removed.
       secret-key: dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==
+      expiration: 86400000
+      refresh-expiration: 604800000
   cors:
     allowed-origins: http://localhost:3000
   mail:
     host: localhost
     port: 1025
+    app: SPRING_APP_TEST
+    from: test@example.com
+    username: test@example.com
+    password: test
+    ssl-enable: false
+  file:
+    storage:
+      upload-dir: uploads-test
+  cache:
+    default-ttl: 30m
+    users-ttl: 10m
+    tokens-ttl: 5m
+  async:
+    task:
+      core-size: 1
+      max-size: 1
+      queue-capacity: 1
+    email:
+      core-size: 1
+      max-size: 1
+      queue-capacity: 1
 
 logging:
   level:

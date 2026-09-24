@@ -27,7 +27,7 @@ import lombok.Data;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.mail")
+@ConfigurationProperties(prefix = "application.mail", ignoreUnknownFields = false)
 public class MailProperties {
 
   /** Display name used in the subject line of outgoing e-mails. */

@@ -20,7 +20,7 @@ import lombok.Data;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.cache")
+@ConfigurationProperties(prefix = "application.cache", ignoreUnknownFields = false)
 public class CacheProperties {
 
   /** TTL applied to every cache without a specific entry below. */

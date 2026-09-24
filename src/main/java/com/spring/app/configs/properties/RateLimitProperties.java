@@ -14,7 +14,7 @@ import jakarta.validation.constraints.Min;
 @Data
 @Component
 @Validated
-@ConfigurationProperties(prefix = "application.rate-limit")
+@ConfigurationProperties(prefix = "application.rate-limit", ignoreUnknownFields = false)
 public class RateLimitProperties {
 
   @Valid
