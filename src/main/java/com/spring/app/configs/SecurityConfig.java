@@ -18,6 +18,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfigurationSource;
 
 import com.spring.app.constants.WhitelistUrlConstant;
+import com.spring.app.enums.ERole;
 import com.spring.app.exceptions.CustomAuthenticationEntryPoint;
 import com.spring.app.filter.JwtAuthenticatorFilter;
 import com.spring.app.filter.RateLimitFilter;
@@ -91,19 +92,23 @@ public class SecurityConfig {
    * Configures authorization settings for the application.
    *
    * <p>
-   * This method sets up authorization rules for incoming HTTP requests. It
-   * permits all incoming requests that match the public URLs defined in
-   * {@link WhitelistUrlConstant#PUBLIC_URLS} and the public GET URLs defined in
-   * {@link WhitelistUrlConstant#PUBLIC_GET_URLS}. For all other requests, it
-   * requires authentication.
+   * Order matters (first match wins): the explicit public lists from
+   * {@link WhitelistUrlConstant}, then ADMIN for the remaining actuator
+   * endpoints, then "authenticated" for everything else. Method security
+   * ({@code @EnableMethodSecurity}) is on for {@code @PreAuthorize} on future
+   * admin endpoints; actuator endpoints are not controller methods, hence the
+   * URL rule.
+   * </p>
    *
    * @param auth The AuthorizationManagerRequestMatcherRegistry to configure.
    */
   private void authorizeHttpRequests(
       AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth) {
     auth
+      .requestMatchers(HttpMethod.POST, WhitelistUrlConstant.PUBLIC_POST_URLS).permitAll()
       .requestMatchers(WhitelistUrlConstant.PUBLIC_URLS).permitAll()
       .requestMatchers(HttpMethod.GET, WhitelistUrlConstant.PUBLIC_GET_URLS).permitAll()
+      .requestMatchers(WhitelistUrlConstant.ADMIN_URLS).hasRole(ERole.ADMIN.name())
       .anyRequest().authenticated();
   }
 
