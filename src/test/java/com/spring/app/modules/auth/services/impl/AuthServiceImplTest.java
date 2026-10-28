@@ -39,6 +39,7 @@ import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -69,6 +70,7 @@ import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.mapper.AuthMapperImpl;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
+import com.spring.app.modules.auth.services.LoginAttemptService;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.AuthCacheService;
 import com.spring.app.shared.services.JwtService;
@@ -91,6 +93,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceImplTest {
 
+  static final String CLIENT_IP = "203.0.113.7";
   static final String SECRET = "dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==";
 
   final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
@@ -114,6 +117,7 @@ class AuthServiceImplTest {
   @Mock AuthCacheService authCacheService;
   @Mock RedisServiceInterface redisService;
   @Mock RateLimitManagerService rateLimitManagerService;
+  @Mock LoginAttemptService loginAttemptService;
 
   @InjectMocks AuthServiceImpl authService;
 
@@ -165,7 +169,7 @@ class AuthServiceImplTest {
   }
 
   private ResponseEntity<?> login(String email, String password) {
-    return authService.login(new LoginRequestDto(email, password));
+    return authService.login(new LoginRequestDto(email, password), CLIENT_IP);
   }
 
   private void givenAuthenticationSucceedsFor(User user) {
@@ -608,5 +612,67 @@ class AuthServiceImplTest {
     order.verify(userRepository).save(user);
     order.verify(refreshTokenRepository).revokeAllByUser(user);
     order.verify(transactionManager).commit(any());
+  }
+
+  // ---- Task 8: failure-only login lockout ------------------------------------------
+
+  @Test
+  void loginIsRefusedWhileTheEmailAndIpPairIsLocked() {
+    when(loginAttemptService.isBlocked("user@example.com", CLIENT_IP)).thenReturn(true);
+
+    assertThatThrownBy(() -> login("User@Example.com", "Str0ng!Pass"))
+        .isInstanceOf(RateLimitExceededException.class);
+    verifyNoInteractions(authenticationManager);
+    assertThat(count("auth.login.failed", "reason", "locked")).isEqualTo(1.0);
+    assertThat(count("auth.ratelimit.rejected", "bucket", "login")).isEqualTo(1.0);
+  }
+
+  @Test
+  void aWrongPasswordIsRecordedForTheEmailAndIp() {
+    when(authenticationManager.authenticate(any())).thenThrow(new BadCredentialsException("x"));
+
+    catchThrowable(() -> login("user@example.com", "Wr0ng!Pass"));
+
+    verify(loginAttemptService).recordFailure("user@example.com", CLIENT_IP);
+  }
+
+  @Test
+  void aSuccessfulLoginIsNotCountedAndClearsEarlierFailures() {
+    givenAuthenticationSucceedsFor(user("user@example.com", EUserStatus.ACTIVE));
+
+    login("user@example.com", "Str0ng!Pass");
+
+    verify(loginAttemptService, never()).recordFailure(anyString(), anyString());
+    verify(loginAttemptService).reset("user@example.com", CLIENT_IP);
+  }
+
+  @Test
+  void aCorrectPasswordOnAnInactiveAccountIsNotAFailedGuess() {
+    when(authenticationManager.authenticate(any())).thenThrow(new UserNotActiveException("Account is not active"));
+
+    catchThrowable(() -> login("pending@example.com", "Str0ng!Pass"));
+
+    verify(loginAttemptService, never()).recordFailure(anyString(), anyString());
+  }
+
+  @Test
+  void loginNoLongerConsumesThePerEmailBucket() {
+    givenAuthenticationSucceedsFor(user("user@example.com", EUserStatus.ACTIVE));
+
+    login("user@example.com", "Str0ng!Pass");
+
+    verify(rateLimitManagerService, never()).checkRateLimitAndThrow(any(), anyString());
+  }
+
+  @Test
+  void anInfrastructureFailureDuringLoginIsRethrownAndNotCountedAsAGuess() {
+    InternalAuthenticationServiceException outage = new InternalAuthenticationServiceException("database down");
+    when(authenticationManager.authenticate(any())).thenThrow(outage);
+
+    assertThatThrownBy(() -> login("user@example.com", "Str0ng!Pass")).isSameAs(outage);
+
+    verify(loginAttemptService, never()).recordFailure(anyString(), anyString());
+    verify(loginAttemptService, never()).reset(anyString(), anyString());
+    assertThat(count("auth.login.failed", "reason", "bad_credentials")).isZero();
   }
 }

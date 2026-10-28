@@ -1,9 +1,14 @@
 package com.spring.app.configs.properties;
 
+import java.time.Duration;
+
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -26,4 +31,17 @@ public class AuthProperties {
    * e-mail.
    */
   private boolean skipEmailVerification = false;
+
+  /**
+   * Failed logins allowed per (e-mail, client IP) inside
+   * {@link #loginFailureWindow} before further attempts are refused (429).
+   * Successful logins are never counted.
+   */
+  @Min(value = 1, message = "application.auth.login-max-failures must be >= 1")
+  private int loginMaxFailures = 5;
+
+  /** How long failed logins are remembered; the lock lifts when it expires. */
+  @NotNull(message = "application.auth.login-failure-window is required")
+  @DurationMin(seconds = 1, message = "application.auth.login-failure-window must be at least 1s")
+  private Duration loginFailureWindow = Duration.ofMinutes(15);
 }

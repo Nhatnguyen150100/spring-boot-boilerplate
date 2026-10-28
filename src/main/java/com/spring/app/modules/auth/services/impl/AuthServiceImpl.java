@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -39,6 +40,7 @@ import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
+import com.spring.app.modules.auth.services.LoginAttemptService;
 import com.spring.app.modules.auth.utils.EmailNormalizer;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
@@ -95,6 +97,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final AuthCacheService authCacheService;
   private final RedisServiceInterface redisService;
   private final RateLimitManagerService rateLimitManagerService;
+  private final LoginAttemptService loginAttemptService;
   private final TransactionTemplate transactionTemplate;
 
   /**
@@ -207,12 +210,20 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  public ResponseEntity<?> login(LoginRequestDto dto) {
+  public ResponseEntity<?> login(LoginRequestDto dto, String clientIp) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
       String email = EmailNormalizer.normalize(dto.email());
-      throttleByEmail(email);
-      User user = authenticate(email, dto.password());
+      // Only FAILED attempts count, per e-mail + client IP: a stranger can no
+      // longer lock a user out by spamming logins with the user's address.
+      if (loginAttemptService.isBlocked(email, clientIp)) {
+        monitoringService.recordLoginFailure("locked");
+        monitoringService.recordRateLimitRejection("login");
+        throw new RateLimitExceededException("Too many failed login attempts. Please try again later.");
+      }
+
+      User user = authenticate(email, dto.password(), clientIp);
+      loginAttemptService.reset(email, clientIp);
 
       String accessToken = jwtService.generateToken(user);
       String refreshToken = createAndStoreRefreshToken(user);
@@ -332,7 +343,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return new InvalidTokenException(INVALID_REFRESH_TOKEN);
   }
 
-  private User authenticate(String email, String password) {
+  private User authenticate(String email, String password, String clientIp) {
     try {
       Authentication authenticated = authenticationManager
           .authenticate(new UsernamePasswordAuthenticationToken(email, password));
@@ -341,8 +352,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
       // Thrown only after the password matched (ApplicationConfig).
       monitoringService.recordLoginFailure("not_active");
       throw ex;
+    } catch (InternalAuthenticationServiceException ex) {
+      // The provider could not even look the user up (e.g. database down). That
+      // is an outage, not a wrong guess: no failure count, no bad_credentials.
+      throw ex;
     } catch (AuthenticationException ex) {
       // Unknown e-mail, DELETED account and wrong password look the same.
+      loginAttemptService.recordFailure(email, clientIp);
       monitoringService.recordLoginFailure("bad_credentials");
       throw new BadCredentialsException(INVALID_CREDENTIALS);
     }

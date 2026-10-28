@@ -46,8 +46,10 @@ public class AuthController {
 
   @Operation(summary = "Login")
   @PostMapping("/login")
-  public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto) {
-    return authService.login(dto);
+  public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto, HttpServletRequest request) {
+    // getRemoteAddr() is the real client once Tomcat's RemoteIpValve has
+    // processed X-Forwarded-For from a trusted proxy (server.tomcat.remoteip.*).
+    return authService.login(dto, request.getRemoteAddr());
   }
 
   @Operation(summary = "Refresh access token")

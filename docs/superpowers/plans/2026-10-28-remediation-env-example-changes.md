@@ -92,3 +92,20 @@ AUTH_SKIP_EMAIL_VERIFICATION=false
 Notes: default in `application.yml` is `false` (read by
 `application.auth.skip-email-verification`). Developers who relied on dev
 auto-activation must now set `AUTH_SKIP_EMAIL_VERIFICATION=true` in `.env`.
+
+## P3 Task 8 (login lockout counts failures only, per e-mail + IP)
+
+Append next to `AUTH_SKIP_EMAIL_VERIFICATION` (under the
+`# --- Auth (application.auth) ---` header), commented out like other
+optional tunables:
+
+```
+# Failed logins allowed per (e-mail, client IP) before further attempts are
+# refused (429) until the window expires. Successful logins are never counted.
+# AUTH_LOGIN_MAX_FAILURES=5
+# AUTH_LOGIN_FAILURE_WINDOW=15m
+```
+
+Notes: defaults in `application.yml` are `5` and `15m` (read by
+`application.auth.login-max-failures` / `login-failure-window`; the window uses
+Spring duration syntax and must be at least 1s).

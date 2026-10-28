@@ -17,7 +17,11 @@ public interface AuthServiceInterface {
 
   ResponseEntity<?> activeAccount(ActiveAccountRequestDto activeAccountRequestDto);
 
-  ResponseEntity<?> login(LoginRequestDto dto);
+  /**
+   * @param clientIp the caller's address ({@code request.getRemoteAddr()});
+   *                 failed attempts are counted per e-mail + IP
+   */
+  ResponseEntity<?> login(LoginRequestDto dto, String clientIp);
 
   ResponseEntity<?> logout(HttpServletRequest request);
 

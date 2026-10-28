@@ -158,6 +158,10 @@ application:
     # honoured while the dev profile is ALSO active; ignored (with a WARN) in
     # every other profile.
     skip-email-verification: ${AUTH_SKIP_EMAIL_VERIFICATION:false}
+    # Failed logins allowed per (e-mail, client IP) before further attempts are
+    # refused until the window expires. Successful logins are never counted.
+    login-max-failures: ${AUTH_LOGIN_MAX_FAILURES:5}
+    login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:15m}
 
   security:
     jwt:
