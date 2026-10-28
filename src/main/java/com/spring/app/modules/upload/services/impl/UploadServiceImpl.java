@@ -8,10 +8,15 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -60,6 +65,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
 
   private Path uploadRoot;
   private Path tempDir;
+  private Set<String> allowedContentTypes;
+  private Set<String> allowedExtensions;
 
   @PostConstruct
   public void init() {
@@ -70,7 +77,17 @@ public class UploadServiceImpl implements UploadServiceInterface {
     } catch (IOException ex) {
       throw new IllegalStateException("Cannot create upload folder " + uploadRoot, ex);
     }
+    allowedContentTypes = normalize(fileStorageProperties.getAllowedContentTypes());
+    allowedExtensions = normalize(fileStorageProperties.getAllowedExtensions()).stream()
+      .map(extension -> extension.startsWith(".") ? extension.substring(1) : extension)
+      .collect(Collectors.toUnmodifiableSet());
     log.info("Upload folder initialized at: {}", uploadRoot);
+  }
+
+  private static Set<String> normalize(List<String> values) {
+    return values.stream()
+      .map(value -> value.trim().toLowerCase(Locale.ROOT))
+      .collect(Collectors.toUnmodifiableSet());
   }
 
   @Override
@@ -146,14 +163,39 @@ public class UploadServiceImpl implements UploadServiceInterface {
     if (originalName == null || originalName.isBlank()) {
       throw new BadRequestException("File name is missing");
     }
+    String fileName;
     try {
       Path name = Path.of(originalName).getFileName();
       if (name == null) {
         throw new BadRequestException("Invalid file name");
       }
-      return name.toString();
+      fileName = name.toString();
     } catch (InvalidPathException ex) {
       throw new BadRequestException("Invalid file name");
+    }
+    if (!allowedExtensions.contains(extensionOf(fileName))
+      || !allowedContentTypes.contains(baseTypeOf(file.getContentType()))) {
+      throw new BadRequestException("File type not allowed");
+    }
+    return fileName;
+  }
+
+  /** @return the text after the last dot, lower-cased; "" when there is none */
+  private static String extensionOf(String fileName) {
+    int dot = fileName.lastIndexOf('.');
+    return dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase(Locale.ROOT);
+  }
+
+  /** @return "type/subtype" in lower case, or "" when absent or malformed */
+  private static String baseTypeOf(String contentType) {
+    if (contentType == null || contentType.isBlank()) {
+      return "";
+    }
+    try {
+      MediaType type = MediaType.parseMediaType(contentType);
+      return (type.getType() + "/" + type.getSubtype()).toLowerCase(Locale.ROOT);
+    } catch (InvalidMediaTypeException ex) {
+      return "";
     }
   }
 

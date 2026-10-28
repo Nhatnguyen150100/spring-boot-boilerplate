@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -169,6 +170,63 @@ class UploadServiceImplTest {
     assertThatThrownBy(() -> service.storeFile(file("", "hello")))
       .isInstanceOf(BadRequestException.class)
       .hasMessage("File name is missing");
+  }
+
+  @Test
+  void rejectsDisallowedContentType() {
+    UploadServiceImpl service = newService();
+    MockMultipartFile upload = new MockMultipartFile("file", "a.txt", "application/x-msdownload",
+      "MZ".getBytes(StandardCharsets.UTF_8));
+
+    assertThatThrownBy(() -> service.storeFile(upload))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("File type not allowed");
+    assertThat(fileOf(USER_A, "a.txt")).doesNotExist();
+  }
+
+  @Test
+  void rejectsDisallowedExtension() {
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.storeFile(file("a.exe", "hello")))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("File type not allowed");
+    assertThat(fileOf(USER_A, "a.exe")).doesNotExist();
+  }
+
+  @Test
+  void rejectsMissingContentType() {
+    UploadServiceImpl service = newService();
+    MockMultipartFile upload = new MockMultipartFile("file", "a.txt", null, "hello".getBytes(StandardCharsets.UTF_8));
+
+    assertThatThrownBy(() -> service.storeFile(upload))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("File type not allowed");
+  }
+
+  @Test
+  void acceptsContentTypeParametersAndUpperCaseExtension() {
+    UploadServiceImpl service = newService();
+    MockMultipartFile upload = new MockMultipartFile("file", "NOTES.TXT", "Text/Plain; charset=UTF-8",
+      "hello".getBytes(StandardCharsets.UTF_8));
+
+    service.storeFile(upload);
+
+    assertThat(fileOf(USER_A, "NOTES.TXT")).hasContent("hello");
+  }
+
+  @Test
+  void allowlistIsConfigurable() {
+    properties.setAllowedContentTypes(List.of("application/zip"));
+    properties.setAllowedExtensions(List.of(".zip"));
+    UploadServiceImpl service = newService();
+
+    service.storeFile(new MockMultipartFile("file", "a.zip", "application/zip", new byte[] { 1 }));
+
+    assertThat(fileOf(USER_A, "a.zip")).exists();
+    assertThatThrownBy(() -> service.storeFile(file("a.txt", "hello")))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("File type not allowed");
   }
 
   private UploadServiceImpl newService() {
