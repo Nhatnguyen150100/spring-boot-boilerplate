@@ -103,10 +103,6 @@ spring:
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
             user-name-attribute: sub
 
-  cloud:
-    compatibility-verifier:
-      enabled: false
-
   threads:
     # Serve each HTTP request (and @Scheduled task) on a virtual thread; almost
     # every request blocks on JDBC or Redis. Request concurrency is no longer

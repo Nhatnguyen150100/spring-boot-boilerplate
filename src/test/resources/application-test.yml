@@ -29,7 +29,6 @@ spring:
     properties:
       hibernate:
         format_sql: false
-        dialect: org.hibernate.dialect.H2Dialect
 
   flyway:
     # The migrations are MySQL-specific, so they are not replayed against H2.
