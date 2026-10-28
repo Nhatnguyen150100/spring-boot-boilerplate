@@ -4,7 +4,10 @@ import java.time.Duration;
 import java.util.Map;
 
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.interceptor.CacheErrorHandler;
+import org.springframework.cache.interceptor.LoggingCacheErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -45,15 +48,23 @@ import lombok.RequiredArgsConstructor;
  * after commit, so an evict cannot be undone by a reader that saw pre-commit
  * data.</li>
  * <li>{@code null} is never cached.</li>
+ * <li>Cache failures (e.g. Redis down) are logged, not thrown, so a cached
+ * method falls through to the database.</li>
+ * <li>Keys carry a version prefix ({@code v2:userProfile::<id>}). Bump
+ * {@link #KEY_VERSION_PREFIX} when the cached DTO shape changes
+ * incompatibly, so entries written by an older build are never read.</li>
  * </ul>
  */
 @Configuration
 @EnableCaching
 @RequiredArgsConstructor
-public class CacheConfig {
+public class CacheConfig implements CachingConfigurer {
 
   /** {@link UserResponseDto} by user id ({@code UUID}). */
   public static final String USER_PROFILE = "userProfile";
+
+  /** Bump the version when the cached DTO shape changes incompatibly. */
+  static final String KEY_VERSION_PREFIX = "v2:";
 
   private static final ObjectMapper CACHE_OBJECT_MAPPER = JsonMapper.builder()
       .addModule(new JavaTimeModule())
@@ -72,6 +83,11 @@ public class CacheConfig {
         .build();
   }
 
+  @Override
+  public CacheErrorHandler errorHandler() {
+    return new LoggingCacheErrorHandler();
+  }
+
   /** One entry per cache; nothing else may be cached. */
   Map<String, RedisCacheConfiguration> cacheConfigurations() {
     return Map.of(
@@ -81,6 +97,7 @@ public class CacheConfig {
   private static <T> RedisCacheConfiguration typedConfiguration(Class<T> valueType, Duration ttl) {
     return RedisCacheConfiguration.defaultCacheConfig()
         .entryTtl(ttl)
+        .prefixCacheNameWith(KEY_VERSION_PREFIX)
         .disableCachingNullValues()
         .serializeKeysWith(SerializationPair.fromSerializer(new StringRedisSerializer()))
         .serializeValuesWith(SerializationPair.fromSerializer(

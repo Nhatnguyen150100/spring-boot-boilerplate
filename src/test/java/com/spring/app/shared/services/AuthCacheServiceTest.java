@@ -2,6 +2,8 @@ package com.spring.app.shared.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -88,6 +90,18 @@ class AuthCacheServiceTest {
     service.evictCachedUser("John@Example.com");
 
     assertThat(profileCache().get(user.getId())).isNull();
+  }
+
+  @Test
+  void evictionSwallowsCacheFailuresSoACommittedChangeIsNotReportedAsAnError() {
+    Cache failing = mock(Cache.class);
+    doThrow(new IllegalStateException("redis down")).when(failing).evict(user.getId());
+    CacheManager failingManager = mock(CacheManager.class);
+    when(failingManager.getCache(CacheConfig.USER_PROFILE)).thenReturn(failing);
+    AuthCacheService failingService = new AuthCacheService(userRepository, refreshTokenRepository, failingManager);
+
+    assertThat(failingService.updateCachedUser(user)).isSameAs(user);
+    verify(failing).evict(user.getId());
   }
 
   @Test

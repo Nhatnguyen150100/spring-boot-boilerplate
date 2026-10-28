@@ -19,8 +19,7 @@ import lombok.extern.slf4j.Slf4j;
  * There is deliberately no {@link RedisConnectionFactory} bean here. Spring
  * Boot's Lettuce auto-configuration builds it from {@code spring.data.redis.*}
  * and, unlike the hand-built factory this class used to declare, honours
- * {@code ssl.enabled}, {@code timeout}, {@code connect-timeout}, pooling and
- * (with {@code spring.threads.virtual.enabled}) the virtual-thread executor.
+ * {@code ssl.enabled}, {@code timeout}, {@code connect-timeout} and pooling.
  * Boot also contributes the {@code StringRedisTemplate} that
  * {@code RedisService} uses for rate-limit counters.
  * </p>

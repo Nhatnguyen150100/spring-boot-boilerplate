@@ -16,6 +16,7 @@ import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * User / refresh-token lookups for the auth flows.
@@ -34,6 +35,7 @@ import lombok.RequiredArgsConstructor;
  * The method names are kept so existing callers compile unchanged.
  * </p>
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthCacheService {
@@ -90,9 +92,14 @@ public class AuthCacheService {
   }
 
   private void evictUserProfile(UUID userId) {
-    Cache cache = cacheManager.getCache(CacheConfig.USER_PROFILE);
-    if (cache != null) {
-      cache.evict(userId);
+    try {
+      Cache cache = cacheManager.getCache(CacheConfig.USER_PROFILE);
+      if (cache != null) {
+        cache.evict(userId);
+      }
+    } catch (RuntimeException e) {
+      // The DB change is already committed; a stale profile expires with its TTL.
+      log.warn("Could not evict cached profile for user {}: {}", userId, e.toString());
     }
   }
 }

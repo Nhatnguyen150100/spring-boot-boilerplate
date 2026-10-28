@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.interceptor.LoggingCacheErrorHandler;
 import org.springframework.cache.transaction.TransactionAwareCacheDecorator;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
@@ -82,6 +83,17 @@ class CacheConfigTest {
     assertThat(manager.getCache(CacheConfig.USER_PROFILE)).isInstanceOf(TransactionAwareCacheDecorator.class);
     assertThat(manager.getCache("users")).isNull();
     assertThat(manager.getCache("tokens")).isNull();
+  }
+
+  @Test
+  void keysAreNamespacedWithAVersionPrefix() {
+    assertThat(userProfileConfig().getKeyPrefixFor(CacheConfig.USER_PROFILE))
+        .isEqualTo("v2:userProfile::");
+  }
+
+  @Test
+  void cacheErrorsAreLoggedNotThrown() {
+    assertThat(cacheConfig.errorHandler()).isInstanceOf(LoggingCacheErrorHandler.class);
   }
 
   private RedisCacheConfiguration userProfileConfig() {
