@@ -36,7 +36,11 @@ class MailServiceTest {
     assertThat(message.getSubject()).isEqualTo("Your OTP Code from TEST_APP");
     assertThat(message.getRecipients(Message.RecipientType.TO)[0].toString()).isEqualTo("user@example.com");
     assertThat(message.getFrom()[0].toString()).isEqualTo("noreply@example.com");
-    assertThat(htmlBody(message.getContent())).contains("123456").doesNotContain("{{");
+    assertThat(htmlBody(message.getContent()))
+        .contains("123456")
+        // OtpEmailService.OTP_EXPIRATION_SECONDS = 180
+        .contains("3 minutes")
+        .doesNotContain("{{");
   }
 
   /** Walks the mixed/related multipart MimeMessageHelper builds and returns the HTML part. */

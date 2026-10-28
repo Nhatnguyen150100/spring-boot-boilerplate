@@ -2,7 +2,9 @@ package com.spring.app.utils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -18,9 +20,11 @@ import lombok.RequiredArgsConstructor;
  * Generates, stores and checks one-time passwords.
  *
  * <p>
- * OTPs are stored in Redis under {@code otp:<lower-cased, trimmed e-mail>}:
- * namespaced so they cannot collide with other keys, and case-insensitive like
- * the MySQL e-mail lookup. Every public method takes the e-mail address, never
+ * OTPs are stored in Redis under
+ * {@code otp:<hex SHA-256 of the lower-cased, trimmed e-mail>}: namespaced so
+ * they cannot collide with other keys, case-insensitive like the MySQL e-mail
+ * lookup, and hashed so the address never appears in Redis key listings or in
+ * logs that print the key. Every public method takes the e-mail address, never
  * a raw Redis key.
  * </p>
  */
@@ -58,10 +62,20 @@ public class OtpFunctionUtil {
     return generateOtp(OTP_LENGTH);
   }
 
-  /** Redis key holding the OTP for {@code email}. */
+  /** Redis key holding the OTP for {@code email}; contains no part of the address. */
   static String otpKey(String email) {
     Objects.requireNonNull(email, "Email must not be null");
-    return KEY_PREFIX + email.trim().toLowerCase(Locale.ROOT);
+    byte[] normalised = email.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+    return KEY_PREFIX + HexFormat.of().formatHex(sha256().digest(normalised));
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      // every Java platform is required to provide SHA-256
+      throw new IllegalStateException("SHA-256 not available", e);
+    }
   }
 
   /**

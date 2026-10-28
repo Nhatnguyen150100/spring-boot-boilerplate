@@ -6,7 +6,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -25,6 +28,18 @@ class OtpFunctionUtilTest {
   private RedisServiceInterface redis;
 
   private OtpFunctionUtil util;
+
+  /** Key computed independently of the production code. */
+  private static final String ALICE_KEY = "otp:" + sha256Hex("alice@example.com");
+
+  private static String sha256Hex(String value) {
+    try {
+      return HexFormat.of().formatHex(
+          MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+  }
 
   @BeforeEach
   void setUp() {
@@ -53,10 +68,26 @@ class OtpFunctionUtilTest {
   }
 
   @Test
-  void storesUnderNamespacedLowerCaseKey() {
+  void storesUnderNamespacedHashOfTheNormalisedAddress() {
     util.storeOtp(" Alice@Example.COM ", "123456", 180);
 
-    verify(redis).setValue("otp:alice@example.com", "123456", 180, TimeUnit.SECONDS);
+    verify(redis).setValue(ALICE_KEY, "123456", 180, TimeUnit.SECONDS);
+  }
+
+  @Test
+  void keyIsSha256HexAndNeverContainsTheAddress() {
+    assertThat(OtpFunctionUtil.otpKey("alice@example.com"))
+        // SHA-256("alice@example.com"), lowercase hex
+        .isEqualTo("otp:ff8d9819fc0e12bf0d24892e45987e249a28dce836a85cad60e28eaaa8c6d976")
+        .doesNotContain("alice")
+        .doesNotContain("@");
+  }
+
+  @Test
+  void differentSpellingsOfOneAddressShareAKey() {
+    assertThat(OtpFunctionUtil.otpKey(" Alice@Example.com "))
+        .isEqualTo(OtpFunctionUtil.otpKey("alice@example.com"))
+        .isEqualTo(ALICE_KEY);
   }
 
   @Test
@@ -68,7 +99,7 @@ class OtpFunctionUtilTest {
 
   @Test
   void validatesAgainstNamespacedKeyCaseInsensitively() {
-    when(redis.getValue("otp:alice@example.com")).thenReturn("123456");
+    when(redis.getValue(ALICE_KEY)).thenReturn("123456");
 
     assertThat(util.validateOtp("ALICE@example.com", "123456")).isTrue();
     assertThat(util.validateOtp("alice@example.com", "654321")).isFalse();
@@ -76,7 +107,7 @@ class OtpFunctionUtilTest {
 
   @Test
   void missingOtpIsInvalid() {
-    when(redis.getValue("otp:alice@example.com")).thenReturn(null);
+    when(redis.getValue(ALICE_KEY)).thenReturn(null);
 
     assertThat(util.validateOtp("alice@example.com", "123456")).isFalse();
   }
@@ -92,6 +123,6 @@ class OtpFunctionUtilTest {
   void removeDeletesNamespacedKey() {
     util.removeOtp("Alice@Example.com");
 
-    verify(redis).delete("otp:alice@example.com");
+    verify(redis).delete(ALICE_KEY);
   }
 }

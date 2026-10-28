@@ -1,5 +1,7 @@
 package com.spring.app.shared.services;
 
+import java.util.concurrent.TimeUnit;
+
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class MailService implements MailServiceInterface {
 
+  /** Shown in the e-mail; derived from the TTL the OTP is actually stored with. */
+  static final long OTP_EXPIRY_MINUTES = TimeUnit.SECONDS.toMinutes(OtpEmailService.OTP_EXPIRATION_SECONDS);
+
   private final MailProperties mailProperties;
   private final JavaMailSender mailSender;
   private final HtmlTemplateOTPBuilder otpTemplate;
@@ -36,7 +41,7 @@ public class MailService implements MailServiceInterface {
     MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
     helper.setTo(to);
     helper.setSubject(String.format("Your OTP Code from %s", mailProperties.getApp()));
-    helper.setText(otpTemplate.buildOtpHtml(otp), true);
+    helper.setText(otpTemplate.buildOtpHtml(otp, OTP_EXPIRY_MINUTES), true);
     helper.setFrom(mailProperties.getFrom());
 
     mailSender.send(message);

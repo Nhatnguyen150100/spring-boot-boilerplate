@@ -25,6 +25,7 @@ public class HtmlTemplateOTPBuilder {
 
   static final String TEMPLATE_LOCATION = "templates/otp-email.html";
   static final String OTP_PLACEHOLDER = "{{OTP}}";
+  static final String EXPIRY_MINUTES_PLACEHOLDER = "{{EXPIRY_MINUTES}}";
 
   private final String template;
 
@@ -36,9 +37,15 @@ public class HtmlTemplateOTPBuilder {
     this.template = load(resource);
   }
 
-  public String buildOtpHtml(String otp) {
+  /**
+   * @param otp           the one-time password
+   * @param expiryMinutes how long the OTP stays valid, shown in the e-mail
+   */
+  public String buildOtpHtml(String otp, long expiryMinutes) {
     Objects.requireNonNull(otp, "otp must not be null");
-    return template.replace(OTP_PLACEHOLDER, HtmlUtils.htmlEscape(otp));
+    return template
+        .replace(OTP_PLACEHOLDER, HtmlUtils.htmlEscape(otp))
+        .replace(EXPIRY_MINUTES_PLACEHOLDER, Long.toString(expiryMinutes));
   }
 
   private static String load(Resource resource) {
@@ -48,9 +55,11 @@ public class HtmlTemplateOTPBuilder {
     } catch (IOException e) {
       throw new IllegalStateException("Cannot read OTP e-mail template " + resource.getDescription(), e);
     }
-    if (!content.contains(OTP_PLACEHOLDER)) {
-      throw new IllegalStateException(
-          "OTP e-mail template " + resource.getDescription() + " has no " + OTP_PLACEHOLDER + " placeholder");
+    for (String placeholder : new String[] { OTP_PLACEHOLDER, EXPIRY_MINUTES_PLACEHOLDER }) {
+      if (!content.contains(placeholder)) {
+        throw new IllegalStateException(
+            "OTP e-mail template " + resource.getDescription() + " has no " + placeholder + " placeholder");
+      }
     }
     return content;
   }

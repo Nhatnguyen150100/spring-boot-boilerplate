@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.SmartLifecycle;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import com.spring.app.configs.properties.AsyncProperties;
@@ -88,6 +89,52 @@ class AsyncConfigTest {
     ex.shutdown();
 
     assertThat(finished).isTrue();
+  }
+
+  @Test
+  void drainStopsAfterTheWebServerButBeforeRedis() {
+    AsyncConfig.EmailExecutorDrain drain = new AsyncConfig(new AsyncProperties())
+        .emailExecutorDrain(emailExecutor(1, 1, 1));
+
+    // Lettuce's connection factory stops in phase 0; Boot's graceful-shutdown
+    // and web-server lifecycles stop in DEFAULT_PHASE - 1024 / - 2048.
+    assertThat(drain.getPhase())
+        .isGreaterThan(0)
+        .isLessThan(SmartLifecycle.DEFAULT_PHASE - 2048);
+  }
+
+  @Test
+  void drainIsRunningOnlyBetweenStartAndStop() {
+    AsyncConfig.EmailExecutorDrain drain = new AsyncConfig(new AsyncProperties())
+        .emailExecutorDrain(emailExecutor(1, 1, 1));
+
+    assertThat(drain.isRunning()).isFalse();
+    drain.start();
+    assertThat(drain.isRunning()).isTrue();
+    drain.stop();
+    assertThat(drain.isRunning()).isFalse();
+  }
+
+  @Test
+  void drainStopWaitsForRunningAndQueuedSends() throws Exception {
+    ThreadPoolTaskExecutor ex = emailExecutor(1, 1, 1);
+    AsyncConfig.EmailExecutorDrain drain = new AsyncConfig(new AsyncProperties()).emailExecutorDrain(ex);
+    drain.start();
+    CountDownLatch started = new CountDownLatch(1);
+    AtomicBoolean runningFinished = new AtomicBoolean(false);
+    AtomicBoolean queuedRan = new AtomicBoolean(false);
+    ex.execute(() -> {
+      started.countDown();
+      runningFinished.set(sleptWithoutInterruption(300));
+    });
+    assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+    ex.execute(() -> queuedRan.set(true)); // waits in the queue
+
+    drain.stop();
+
+    assertThat(runningFinished).isTrue();
+    assertThat(queuedRan).isTrue();
+    assertThat(ex.getThreadPoolExecutor().isTerminated()).isTrue();
   }
 
   private static void awaitQuietly(CountDownLatch latch) {

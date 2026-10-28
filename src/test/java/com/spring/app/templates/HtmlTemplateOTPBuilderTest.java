@@ -24,36 +24,38 @@ class HtmlTemplateOTPBuilderTest {
 
   @Test
   void rendersPackagedTemplateFromClasspath() {
-    String html = new HtmlTemplateOTPBuilder().buildOtpHtml("123456");
+    String html = new HtmlTemplateOTPBuilder().buildOtpHtml("123456", 3);
 
     assertThat(html)
         .contains("<html")
         .contains("123456")
+        .contains("3 minutes")
         // every placeholder in the shipped template must be filled
         .doesNotContain("{{");
   }
 
   @Test
   void escapesTheInsertedValue() {
-    HtmlTemplateOTPBuilder builder = new HtmlTemplateOTPBuilder(resource("<p>{{OTP}}</p>"));
+    HtmlTemplateOTPBuilder builder = new HtmlTemplateOTPBuilder(resource("<p>{{OTP}} / {{EXPIRY_MINUTES}}</p>"));
 
-    assertThat(builder.buildOtpHtml("<b>&")).isEqualTo("<p>&lt;b&gt;&amp;</p>");
+    assertThat(builder.buildOtpHtml("<b>&", 5)).isEqualTo("<p>&lt;b&gt;&amp; / 5</p>");
   }
 
   @Test
   void readsTheTemplateOnlyOnce() {
     AtomicInteger reads = new AtomicInteger();
-    Resource counting = new ByteArrayResource("<p>{{OTP}}</p>".getBytes(StandardCharsets.UTF_8)) {
+    String content = "<p>{{OTP}} {{EXPIRY_MINUTES}}</p>";
+    Resource counting = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8)) {
       @Override
       public String getContentAsString(Charset charset) {
         reads.incrementAndGet();
-        return "<p>{{OTP}}</p>";
+        return content;
       }
     };
     HtmlTemplateOTPBuilder builder = new HtmlTemplateOTPBuilder(counting);
 
-    builder.buildOtpHtml("111111");
-    builder.buildOtpHtml("222222");
+    builder.buildOtpHtml("111111", 3);
+    builder.buildOtpHtml("222222", 3);
 
     assertThat(reads).hasValue(1);
   }
@@ -66,9 +68,16 @@ class HtmlTemplateOTPBuilderTest {
   }
 
   @Test
-  void templateWithoutPlaceholderIsRejected() {
-    assertThatThrownBy(() -> new HtmlTemplateOTPBuilder(resource("<p>no placeholder</p>")))
+  void templateWithoutOtpPlaceholderIsRejected() {
+    assertThatThrownBy(() -> new HtmlTemplateOTPBuilder(resource("<p>valid for {{EXPIRY_MINUTES}} minutes</p>")))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("{{OTP}}");
+  }
+
+  @Test
+  void templateWithoutExpiryPlaceholderIsRejected() {
+    assertThatThrownBy(() -> new HtmlTemplateOTPBuilder(resource("<p>{{OTP}}</p>")))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("{{EXPIRY_MINUTES}}");
   }
 }
