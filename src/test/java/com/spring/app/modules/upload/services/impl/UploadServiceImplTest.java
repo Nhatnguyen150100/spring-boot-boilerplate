@@ -2,11 +2,14 @@ package com.spring.app.modules.upload.services.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -229,6 +232,29 @@ class UploadServiceImplTest {
       .hasMessage("File type not allowed");
   }
 
+  @Test
+  void storedFileIsReadableByOtherOsUsersByDefault() throws IOException {
+    assumeTrue(isPosix(), "file system has no POSIX permissions");
+    UploadServiceImpl service = newService();
+
+    service.storeFile(file("a.txt", "hello"));
+
+    assertThat(Files.getPosixFilePermissions(fileOf(USER_A, "a.txt")))
+      .isEqualTo(PosixFilePermissions.fromString("rw-r--r--"));
+  }
+
+  @Test
+  void storedFilePermissionsAreConfigurable() throws IOException {
+    assumeTrue(isPosix(), "file system has no POSIX permissions");
+    properties.setFilePermissions("rw-r-----");
+    UploadServiceImpl service = newService();
+
+    service.storeFile(file("a.txt", "hello"));
+
+    assertThat(Files.getPosixFilePermissions(fileOf(USER_A, "a.txt")))
+      .isEqualTo(PosixFilePermissions.fromString("rw-r-----"));
+  }
+
   private UploadServiceImpl newService() {
     properties.setUploadDir(dir.toString());
     UploadServiceImpl service = new UploadServiceImpl(properties, currentUser::get);
@@ -238,6 +264,10 @@ class UploadServiceImplTest {
 
   private Path fileOf(String user, String name) {
     return dir.resolve(user).resolve(name);
+  }
+
+  private static boolean isPosix() {
+    return FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
   }
 
   private static MockMultipartFile file(String name, String content) {

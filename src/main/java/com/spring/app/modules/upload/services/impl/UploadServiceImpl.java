@@ -8,6 +8,8 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -67,6 +69,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
   private Path tempDir;
   private Set<String> allowedContentTypes;
   private Set<String> allowedExtensions;
+  private Set<PosixFilePermission> filePermissions;
+  private boolean posix;
 
   @PostConstruct
   public void init() {
@@ -81,6 +85,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
     allowedExtensions = normalize(fileStorageProperties.getAllowedExtensions()).stream()
       .map(extension -> extension.startsWith(".") ? extension.substring(1) : extension)
       .collect(Collectors.toUnmodifiableSet());
+    filePermissions = PosixFilePermissions.fromString(fileStorageProperties.getFilePermissions());
+    posix = uploadRoot.getFileSystem().supportedFileAttributeViews().contains("posix");
     log.info("Upload folder initialized at: {}", uploadRoot);
   }
 
@@ -103,6 +109,11 @@ public class UploadServiceImpl implements UploadServiceInterface {
       tempPath = Files.createTempFile(tempDir, "upload-", ".tmp");
       try (InputStream in = file.getInputStream()) {
         Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
+      }
+      if (posix) {
+        // createTempFile makes the file 0600 and the rename keeps that mode;
+        // nginx or a backup agent running as another OS user could not read it.
+        Files.setPosixFilePermissions(tempPath, filePermissions);
       }
       Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       log.info("File {} has been saved for user {}", fileName, ownerDir.getFileName());
