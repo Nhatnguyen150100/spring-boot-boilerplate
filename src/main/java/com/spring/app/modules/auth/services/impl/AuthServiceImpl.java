@@ -28,6 +28,7 @@ import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
+import com.spring.app.modules.auth.exceptions.InvalidTokenException;
 import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
@@ -41,6 +42,8 @@ import com.spring.app.shared.services.RateLimitManagerService;
 import com.spring.app.utils.JwtFunctionUtil;
 import com.spring.app.utils.OtpFunctionUtil;
 
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +53,9 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthServiceImpl implements AuthServiceInterface {
+
+  static final String INVALID_ACCESS_TOKEN = "Invalid or expired token";
+  static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
 
   @Value("${spring.profiles.active}")
   private String activeProfile;
@@ -176,28 +182,29 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> logout(HttpServletRequest request) {
     String token = jwtFunction.extractTokenFromHeader(request);
     if (token == null) {
-      throw new BadRequestException("Authorization header is missing or invalid");
+      throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
     }
+    Claims claims = parseAccessToken(token);
+    User user = userRepository.findByEmail(claims.getSubject())
+        .orElseThrow(() -> new InvalidTokenException(INVALID_ACCESS_TOKEN));
 
-    String email = jwtService.extractUsername(token);
-    User user = authCacheService.getUserByEmail(email);
-
-    long remainingTtl = jwtService.getRemainingExpirationSeconds(token);
-    if (remainingTtl > 0) {
-      redisService.blacklistToken(token, remainingTtl);
+    long remainingSeconds = (claims.getExpiration().getTime() - System.currentTimeMillis()) / 1000;
+    if (remainingSeconds > 0) {
+      redisService.blacklistToken(token, remainingSeconds);
     }
-
     refreshTokenRepository.revokeAllByUser(user);
-    authCacheService.evictCachedUser(email);
 
     SecurityContextHolder.clearContext();
-    log.info("User {} logged out successfully", user.getEmail());
+    log.info("User {} logged out", user.getId());
     return ResponseBuilder.success("User logged out successfully");
   }
 
   @Override
   @Transactional
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
+    if (!jwtService.isRefreshToken(dto.refreshToken())) {
+      throw new InvalidTokenException(INVALID_REFRESH_TOKEN);
+    }
     RefreshToken oldToken = authCacheService.getRefreshToken(dto.refreshToken());
 
     if (oldToken.isRevoked() || oldToken.getExpiryDate().isBefore(Instant.now())) {
@@ -206,8 +213,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
     oldToken.setRevoked(true);
     refreshTokenRepository.save(oldToken);
-
-    authCacheService.evictCachedToken(dto.refreshToken());
 
     User user = oldToken.getUser();
     String accessToken = jwtService.generateToken(user);
@@ -253,6 +258,21 @@ public class AuthServiceImpl implements AuthServiceInterface {
     refreshTokenRepository.revokeAllByUser(user);
 
     return ResponseBuilder.success("Password reset successfully");
+  }
+
+  /** Parses a bearer token for logout. Anything unusable is a 401, never a 500. */
+  private Claims parseAccessToken(String token) {
+    Claims claims;
+    try {
+      claims = jwtService.parseClaims(token);
+    } catch (JwtException | IllegalArgumentException e) {
+      throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
+    }
+    if (!JwtServiceInterface.ACCESS_TOKEN_TYPE.equals(
+        claims.get(JwtServiceInterface.TOKEN_TYPE_CLAIM, String.class))) {
+      throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
+    }
+    return claims;
   }
 
   private void validateEmailUniqueness(String email) {

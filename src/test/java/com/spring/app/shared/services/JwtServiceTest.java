@@ -59,4 +59,31 @@ class JwtServiceTest {
     // Verifiable with the ORIGINAL key => it was signed with the original key.
     assertThat(jwtService.extractUsername(token)).isEqualTo("a@example.com");
   }
+
+  @Test
+  void accessAndRefreshTokensCarryDifferentTypes() {
+    User user = user("a@example.com");
+    String access = jwtService.generateToken(user);
+    String refresh = jwtService.generateRefreshToken(user);
+
+    assertThat(jwtService.isAccessToken(access)).isTrue();
+    assertThat(jwtService.isRefreshToken(access)).isFalse();
+    assertThat(jwtService.isRefreshToken(refresh)).isTrue();
+    assertThat(jwtService.isAccessToken(refresh)).isFalse();
+    assertThat(jwtService.parseClaims(access).get("token_type", String.class)).isEqualTo("access");
+  }
+
+  @Test
+  void typeChecksReturnFalseInsteadOfThrowing() {
+    assertThat(jwtService.isAccessToken("not-a-jwt")).isFalse();
+    assertThat(jwtService.isRefreshToken("")).isFalse();
+    assertThat(jwtService.isAccessToken(null)).isFalse();
+  }
+
+  @Test
+  void tokensMintedBackToBackAreDistinct() {
+    User user = user("a@example.com");
+
+    assertThat(jwtService.generateRefreshToken(user)).isNotEqualTo(jwtService.generateRefreshToken(user));
+  }
 }

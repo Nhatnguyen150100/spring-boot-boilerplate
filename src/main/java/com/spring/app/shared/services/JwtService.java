@@ -2,6 +2,7 @@ package com.spring.app.shared.services;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtParser;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 
@@ -70,20 +71,32 @@ public class JwtService implements JwtServiceInterface {
 
   @Override
   public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-    final Claims claims = extractAllClaims(token);
-    return claimsResolver.apply(claims);
+    return claimsResolver.apply(parseClaims(token));
+  }
+
+  @Override
+  public Claims parseClaims(String token) {
+    return parser.parseSignedClaims(token).getPayload();
+  }
+
+  @Override
+  public boolean isAccessToken(String token) {
+    return hasType(token, ACCESS_TOKEN_TYPE);
+  }
+
+  @Override
+  public boolean isRefreshToken(String token) {
+    return hasType(token, REFRESH_TOKEN_TYPE);
   }
 
   @Override
   public String generateToken(User user) {
-    Map<String, Object> extraClaims = getHashObject(user);
-    return buildToken(extraClaims, user, jwtProperties.getExpiration());
+    return buildToken(user, ACCESS_TOKEN_TYPE, jwtProperties.getExpiration());
   }
 
   @Override
   public String generateRefreshToken(User user) {
-    Map<String, Object> extraClaims = getHashObject(user);
-    return buildToken(extraClaims, user, jwtProperties.getRefreshExpiration());
+    return buildToken(user, REFRESH_TOKEN_TYPE, jwtProperties.getRefreshExpiration());
   }
 
   @Override
@@ -99,12 +112,18 @@ public class JwtService implements JwtServiceInterface {
     return Math.max(0, remainingMs / 1000);
   }
 
-  private String buildToken(Map<String, Object> extraClaims, UserDetails userDetails, long expiration) {
+  private String buildToken(User user, String tokenType, long expiration) {
+    Map<String, Object> claims = getHashObject(user);
+    claims.put(TOKEN_TYPE_CLAIM, tokenType);
+    long now = System.currentTimeMillis();
     return Jwts.builder()
-      .claims(extraClaims)
-      .subject(userDetails.getUsername())
-      .issuedAt(new Date(System.currentTimeMillis()))
-      .expiration(new Date(System.currentTimeMillis() + expiration))
+      .claims(claims)
+      // Unique per token: iat/exp have second resolution, so two tokens minted
+      // for one user in the same second would otherwise be byte-identical.
+      .id(UUID.randomUUID().toString())
+      .subject(user.getUsername())
+      .issuedAt(new Date(now))
+      .expiration(new Date(now + expiration))
       .signWith(signingKey, Jwts.SIG.HS256)
       .compact();
   }
@@ -122,7 +141,11 @@ public class JwtService implements JwtServiceInterface {
     return extractClaim(token, Claims::getExpiration).before(new Date());
   }
 
-  private Claims extractAllClaims(String token) {
-    return parser.parseSignedClaims(token).getPayload();
+  private boolean hasType(String token, String expectedType) {
+    try {
+      return expectedType.equals(parseClaims(token).get(TOKEN_TYPE_CLAIM, String.class));
+    } catch (JwtException | IllegalArgumentException e) {
+      return false;
+    }
   }
 }
