@@ -1,8 +1,11 @@
 package com.spring.app.shared.services;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.shared.interfaces.RedisServiceInterface;
@@ -10,6 +13,19 @@ import com.spring.app.shared.interfaces.RedisServiceInterface;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Thin Redis facade.
+ *
+ * <p>
+ * Two templates, chosen by type so Spring can never swap them:
+ * </p>
+ * <ul>
+ * <li>{@code redisTemplate} ({@code RedisTemplate<String, Object>}, JSON
+ * values): OTPs and the token blacklist.</li>
+ * <li>{@code stringRedisTemplate} (Boot's {@link StringRedisTemplate}, plain
+ * strings): rate-limit counters, which must be raw integers for INCR.</li>
+ * </ul>
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -17,8 +33,23 @@ public class RedisService implements RedisServiceInterface {
 
   private static final String BLACKLIST_PREFIX = "blacklist:token:";
 
+  /**
+   * Fixed-window counter in one server-side step, so a counter can never exist
+   * without a TTL. EXPIRE is applied when the window opens ({@code count == 1})
+   * and also whenever the key has no TTL ({@code TTL == -1}), which re-arms
+   * counters left without one by the old two-command INCR/EXPIRE code. A
+   * steady stream of requests never extends a live window.
+   */
+  static final RedisScript<Long> INCREMENT_FIXED_WINDOW = RedisScript.of("""
+      local count = redis.call('INCR', KEYS[1])
+      if count == 1 or redis.call('TTL', KEYS[1]) == -1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+      end
+      return count
+      """, Long.class);
+
   private final RedisTemplate<String, Object> redisTemplate;
-  private final RedisTemplate<String, Object> rateLimitRedisTemplate;
+  private final StringRedisTemplate stringRedisTemplate;
 
   /**
    * Sets a value in the Redis store with a TTL (Time-To-Live) that is
@@ -86,64 +117,29 @@ public class RedisService implements RedisServiceInterface {
     return Boolean.TRUE.equals(redisTemplate.hasKey(BLACKLIST_PREFIX + token));
   }
 
-  /**
-   * Sets a value in the Redis store that is specific to rate limiting with the
-   * given key, value, duration, and time unit. This value is associated with the
-   * rate limit Redis connection, which is separate from the main Redis
-   * connection.
-   *
-   * @param key      the key under which the value is stored
-   * @param value    the value to store
-   * @param duration the duration of the expiration
-   * @param unit     the unit for the duration
-   */
   @Override
   public void setRateLimitValue(String key, Object value, long duration, TimeUnit unit) {
-    rateLimitRedisTemplate.opsForValue().set(key, value, duration, unit);
+    stringRedisTemplate.opsForValue().set(key, String.valueOf(value), duration, unit);
   }
 
   @Override
   public long incrementRateLimit(String key, long windowSeconds) {
-    Long count = rateLimitRedisTemplate.opsForValue().increment(key);
-    if (count != null && count == 1L) {
-      // Only set the TTL when the window is first opened; subsequent increments
-      // must not refresh it, otherwise the window would slide indefinitely.
-      rateLimitRedisTemplate.expire(key, windowSeconds, TimeUnit.SECONDS);
-    }
+    Long count = stringRedisTemplate.execute(INCREMENT_FIXED_WINDOW, List.of(key), String.valueOf(windowSeconds));
     return count == null ? 0L : count;
   }
 
-  /**
-   * Retrieves the value associated with the given key from the rate limit Redis
-   * store. This store is separate from the main Redis connection.
-   *
-   * @param key the key from which to retrieve the value
-   * @return the value associated with the given key, null if no such key exists
-   */
   @Override
   public Object getRateLimitValue(String key) {
-    return rateLimitRedisTemplate.opsForValue().get(key);
+    return stringRedisTemplate.opsForValue().get(key);
   }
 
-  /**
-   * Deletes the value associated with the given key from the rate limit Redis
-   * store.
-   *
-   * @param key the key for which the value should be deleted
-   */
   @Override
   public void deleteRateLimitKey(String key) {
-    rateLimitRedisTemplate.delete(key);
+    stringRedisTemplate.delete(key);
   }
 
-  /**
-   * Determines whether the given key exists in the rate limit Redis store.
-   * 
-   * @param key the key for which to check existence
-   * @return true if the key exists, false otherwise
-   */
   @Override
   public boolean hasRateLimitKey(String key) {
-    return Boolean.TRUE.equals(rateLimitRedisTemplate.hasKey(key));
+    return Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
   }
 }
