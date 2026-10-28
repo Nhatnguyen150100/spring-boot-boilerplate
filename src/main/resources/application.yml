@@ -102,6 +102,16 @@ spring:
     compatibility-verifier:
       enabled: false
 
+  threads:
+    # Serve each request (and @Scheduled task) on a virtual thread. Almost every
+    # request blocks on JDBC, Redis or SMTP, which is what virtual threads are
+    # for. Pinning risk is low on Java 21: the app has no synchronized blocks,
+    # and mysql-connector-j 9.x / HikariCP 6.x use java.util.concurrent locks.
+    # Request concurrency is no longer capped by Tomcat's thread pool, so
+    # hikari.maximum-pool-size is now the real limit on concurrent DB work.
+    virtual:
+      enabled: true
+
 server:
   port: ${SERVER_PORT:8080}
   error:
@@ -158,6 +168,7 @@ application:
     start-tls: true
     ssl-enable: ${MAIL_SSL_ENABLED:false}
     default-encoding: UTF-8
+    max-concurrent-sends: ${MAIL_MAX_CONCURRENT_SENDS:5}
 
   cache:
     default-ttl: ${CACHE_DEFAULT_TTL:30m}
@@ -166,14 +177,12 @@ application:
     cache-null-values: false
 
   async:
+    # E-mail runs on virtual threads (AsyncConfig) and needs no pool settings;
+    # see mail.max-concurrent-sends for its limit.
     task:
       core-size: ${ASYNC_TASK_CORE_SIZE:5}
       max-size: ${ASYNC_TASK_MAX_SIZE:10}
       queue-capacity: ${ASYNC_TASK_QUEUE_CAPACITY:25}
-    email:
-      core-size: ${ASYNC_EMAIL_CORE_SIZE:2}
-      max-size: ${ASYNC_EMAIL_MAX_SIZE:5}
-      queue-capacity: ${ASYNC_EMAIL_QUEUE_CAPACITY:10}
 
   # Quotas are identical in every environment today, so they are declared once
   # here. Override a single bucket in a profile file if that ever changes.

@@ -2,6 +2,7 @@ package com.spring.app.configs;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -23,21 +24,26 @@ public class AsyncConfig {
 
   @Bean(name = "taskExecutor")
   Executor taskExecutor() {
-    return buildExecutor(asyncProperties.getTask(), TASK_THREAD_NAME_PREFIX);
-  }
-
-  @Bean(name = "emailExecutor")
-  Executor emailExecutor() {
-    return buildExecutor(asyncProperties.getEmail(), EMAIL_THREAD_NAME_PREFIX);
-  }
-
-  private Executor buildExecutor(AsyncProperties.Pool pool, String threadNamePrefix) {
+    AsyncProperties.Pool pool = asyncProperties.getTask();
     ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
     executor.setCorePoolSize(pool.getCoreSize());
     executor.setMaxPoolSize(pool.getMaxSize());
     executor.setQueueCapacity(pool.getQueueCapacity());
-    executor.setThreadNamePrefix(threadNamePrefix);
+    executor.setThreadNamePrefix(TASK_THREAD_NAME_PREFIX);
     executor.initialize();
+    return executor;
+  }
+
+  /**
+   * One virtual thread per e-mail: sending is almost entirely waiting on the
+   * SMTP server, so there is nothing worth pooling. The number of concurrent
+   * SMTP sessions is capped in {@link com.spring.app.shared.services.MailService}
+   * instead, around the resource that is actually scarce.
+   */
+  @Bean(name = "emailExecutor")
+  Executor emailExecutor() {
+    SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor(EMAIL_THREAD_NAME_PREFIX);
+    executor.setVirtualThreads(true);
     return executor;
   }
 }

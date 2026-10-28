@@ -56,4 +56,11 @@ public class MailProperties {
   private boolean sslEnable = false;
 
   private String defaultEncoding = "UTF-8";
+
+  /**
+   * Upper bound on simultaneous SMTP sends. Providers cap concurrent sessions
+   * per account, so extra sends wait for a free slot instead of failing.
+   */
+  @Min(value = 1, message = "application.mail.max-concurrent-sends must be >= 1")
+  private int maxConcurrentSends = 5;
 }

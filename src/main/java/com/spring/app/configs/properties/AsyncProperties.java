@@ -21,10 +21,6 @@ public class AsyncProperties {
   @Valid
   private Pool task = new Pool(5, 10, 25);
 
-  /** Dedicated pool for outgoing e-mail, exposed as {@code emailExecutor}. */
-  @Valid
-  private Pool email = new Pool(2, 5, 10);
-
   @Data
   @NoArgsConstructor
   @AllArgsConstructor
