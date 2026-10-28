@@ -19,6 +19,9 @@ import lombok.Data;
 @ConfigurationProperties(prefix = "application.file.storage", ignoreUnknownFields = false)
 public class FileStorageProperties {
 
+  private static final String CONTENT_TYPE_REGEX = "[\\w.+-]+/[\\w.+-]+";
+  private static final String EXTENSION_REGEX = "\\.?[A-Za-z0-9]+";
+
   /** Root folder; files live in {@code <upload-dir>/<userId>/}. */
   @NotBlank(message = "application.file.storage.upload-dir is required")
   private String uploadDir = "uploads";
@@ -28,12 +31,14 @@ public class FileStorageProperties {
    * case-insensitive). An upload must match this AND {@link #allowedExtensions}.
    */
   @NotEmpty(message = "application.file.storage.allowed-content-types must not be empty")
-  private List<@NotBlank String> allowedContentTypes = new ArrayList<>(List.of(
+  private List<@NotBlank @Pattern(regexp = CONTENT_TYPE_REGEX,
+    message = "must be type/subtype, e.g. image/png (no wildcards or parameters)") String> allowedContentTypes = new ArrayList<>(List.of(
     "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf", "text/plain"));
 
   /** Accepted file-name extensions, without the dot, case-insensitive. */
   @NotEmpty(message = "application.file.storage.allowed-extensions must not be empty")
-  private List<@NotBlank String> allowedExtensions = new ArrayList<>(List.of(
+  private List<@NotBlank @Pattern(regexp = EXTENSION_REGEX,
+    message = "must be a single extension such as png or .png (no dots inside, no wildcards)") String> allowedExtensions = new ArrayList<>(List.of(
     "png", "jpg", "jpeg", "gif", "webp", "pdf", "txt"));
 
   /**

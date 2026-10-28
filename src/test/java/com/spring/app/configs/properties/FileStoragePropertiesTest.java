@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.MapConfigurationPropertySource;
@@ -44,6 +46,33 @@ class FileStoragePropertiesTest {
     assertThat(violatedPaths(properties))
       .anyMatch(path -> path.equals("allowedContentTypes"))
       .anyMatch(path -> path.startsWith("allowedExtensions"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = { ".", "tar.gz", "p ng", "*", "png/" })
+  void rejectsMalformedExtensions(String extension) {
+    FileStorageProperties properties = new FileStorageProperties();
+    properties.setAllowedExtensions(List.of(extension));
+
+    assertThat(violatedPaths(properties)).anyMatch(path -> path.startsWith("allowedExtensions"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = { "image/*", "*/*", "image", "image/", "/png", "text/plain;charset=UTF-8", "a b/c" })
+  void rejectsMalformedContentTypes(String contentType) {
+    FileStorageProperties properties = new FileStorageProperties();
+    properties.setAllowedContentTypes(List.of(contentType));
+
+    assertThat(violatedPaths(properties)).anyMatch(path -> path.startsWith("allowedContentTypes"));
+  }
+
+  @Test
+  void acceptsExtensionsWithOrWithoutLeadingDotAndStructuredSuffixTypes() {
+    FileStorageProperties properties = new FileStorageProperties();
+    properties.setAllowedExtensions(List.of("png", ".JPG", "7z"));
+    properties.setAllowedContentTypes(List.of("image/svg+xml", "application/vnd.ms-excel", "application/x-tar"));
+
+    assertThat(VALIDATOR.validate(properties)).isEmpty();
   }
 
   @Test
