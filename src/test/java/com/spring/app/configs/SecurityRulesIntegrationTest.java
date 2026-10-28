@@ -1,6 +1,7 @@
 package com.spring.app.configs;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -41,6 +42,7 @@ import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.LoginAttemptService;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.JwtService;
@@ -48,7 +50,8 @@ import com.spring.app.shared.services.JwtService;
 /**
  * The real SecurityConfig, JWT filter, rate-limit filter, exception handling
  * and actuator, on H2. Redis is never contacted: RedisServiceInterface (token
- * blacklist + rate-limit counters) and LoginAttemptService are mocks, so
+ * blacklist + rate-limit counters), LoginAttemptService and
+ * TokenRevocationService are mocks, so
  * `mvn test` needs nothing running. @AutoConfigureObservability keeps the
  * Prometheus registry that Spring Boot otherwise disables in tests.
  */
@@ -91,6 +94,7 @@ class SecurityRulesIntegrationTest {
 
   @MockitoBean private RedisServiceInterface redisService;
   @MockitoBean private LoginAttemptService loginAttemptService;
+  @MockitoBean private TokenRevocationService tokenRevocationService;
 
   private User activeUser;
   private User adminUser;
@@ -161,6 +165,15 @@ class SecurityRulesIntegrationTest {
   void aBlacklistedTokenIs401() throws Exception {
     String token = jwtService.generateToken(activeUser);
     when(redisService.isTokenBlacklisted(token)).thenReturn(true);
+
+    mockMvc.perform(get("/api/v1/test-probe/me").header(AUTHORIZATION, bearer(token)))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void aTokenIssuedBeforeAPasswordResetIs401() throws Exception {
+    String token = jwtService.generateToken(activeUser);
+    when(tokenRevocationService.isRevoked(eq(activeUser.getId()), any())).thenReturn(true);
 
     mockMvc.perform(get("/api/v1/test-probe/me").header(AUTHORIZATION, bearer(token)))
         .andExpect(status().isUnauthorized());

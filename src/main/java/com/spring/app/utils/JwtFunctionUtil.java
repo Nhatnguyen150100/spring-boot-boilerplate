@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 
@@ -28,6 +29,7 @@ public class JwtFunctionUtil {
   private final JwtServiceInterface jwtService;
   private final UserDetailsService userDetailsService;
   private final RedisServiceInterface redisService;
+  private final TokenRevocationService tokenRevocationService;
 
   /**
    * Extracts the JWT token from the Authorization header of the given HTTP
@@ -59,10 +61,12 @@ public class JwtFunctionUtil {
    *
    * <p>
    * The context is left empty (the request stays anonymous) when the token is
-   * a refresh token, has been blacklisted by logout, or belongs to an account
-   * that is not ACTIVE or no longer exists (DELETED). It also stays empty when
-   * the blacklist cannot be consulted (Redis down): failing open would let a
-   * logged-out token work again, so the check fails closed.
+   * a refresh token, has been blacklisted by logout, belongs to an account
+   * that is not ACTIVE or no longer exists (DELETED), or was issued before the
+   * account's tokens were revoked (password reset, see
+   * {@link TokenRevocationService}). It also stays empty when the blacklist or
+   * the revocation marker cannot be consulted (Redis down): failing open would
+   * let a logged-out or reset token work again, so both checks fail closed.
    * </p>
    *
    * <p>
@@ -97,6 +101,15 @@ public class JwtFunctionUtil {
       return;
     }
     if (!(userDetails instanceof User user) || user.getStatus() != EUserStatus.ACTIVE) {
+      return;
+    }
+    try {
+      if (tokenRevocationService.isRevoked(user.getId(), claims.getIssuedAt())) {
+        return;
+      }
+    } catch (DataAccessException e) {
+      log.warn("Token revocation marker unavailable ({}); treating the request as anonymous",
+          e.getClass().getSimpleName());
       return;
     }
 

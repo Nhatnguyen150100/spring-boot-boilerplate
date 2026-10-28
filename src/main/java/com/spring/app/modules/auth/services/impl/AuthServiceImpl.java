@@ -45,6 +45,7 @@ import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 import com.spring.app.modules.auth.services.LoginAttemptService;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.modules.auth.utils.EmailNormalizer;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
@@ -103,6 +104,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final RedisServiceInterface redisService;
   private final RateLimitManagerService rateLimitManagerService;
   private final LoginAttemptService loginAttemptService;
+  private final TokenRevocationService tokenRevocationService;
   private final TransactionTemplate transactionTemplate;
 
   /**
@@ -329,6 +331,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
       userRepository.save(user);
       refreshTokenRepository.revokeAllByUser(user);
     });
+    // Access tokens are stateless: refuse every one issued before this moment.
+    tokenRevocationService.revokeAccessTokens(user.getId());
     otpFunction.removeOtp(email);
     return ResponseBuilder.success("Password reset successfully");
   }

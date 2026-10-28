@@ -78,6 +78,7 @@ import com.spring.app.modules.auth.mapper.AuthMapperImpl;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.LoginAttemptService;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.AuthCacheService;
 import com.spring.app.shared.services.JwtService;
@@ -125,6 +126,7 @@ class AuthServiceImplTest {
   @Mock RedisServiceInterface redisService;
   @Mock RateLimitManagerService rateLimitManagerService;
   @Mock LoginAttemptService loginAttemptService;
+  @Mock TokenRevocationService tokenRevocationService;
 
   @InjectMocks AuthServiceImpl authService;
 
@@ -370,6 +372,7 @@ class AuthServiceImplTest {
           .hasMessage("Invalid or expired OTP");
     }
     verify(refreshTokenRepository, never()).revokeAllByUser(any());
+    verifyNoInteractions(tokenRevocationService);
   }
 
   @ParameterizedTest
@@ -689,6 +692,19 @@ class AuthServiceImplTest {
     order.verify(userRepository).save(user);
     order.verify(refreshTokenRepository).revokeAllByUser(user);
     order.verify(transactionManager).commit(any());
+  }
+
+  @Test
+  void passwordResetEndsLiveAccessTokensOnceCommitted() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    givenUser(user);
+    when(otpFunction.validateOtp("active@example.com", "123456")).thenReturn(true);
+
+    authService.resetPassword(new ResetPasswordRequestDto("active@example.com", "123456", "NewStr0ng!Pass"));
+
+    InOrder order = inOrder(transactionManager, tokenRevocationService);
+    order.verify(transactionManager).commit(any());
+    order.verify(tokenRevocationService).revokeAccessTokens(user.getId());
   }
 
   // ---- Task 8: failure-only login lockout ------------------------------------------

@@ -16,6 +16,7 @@ import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.JwtService;
 import com.spring.app.utils.JwtFunctionUtil;
@@ -35,7 +36,8 @@ class BearerAuthenticationUserDetailsTest {
   private final JwtFunctionUtil jwtFunction = new JwtFunctionUtil(
       jwtService,
       new ApplicationConfig(userRepository, mock(ApplicationAuditAware.class)).userDetailsService(),
-      mock(RedisServiceInterface.class));
+      mock(RedisServiceInterface.class),
+      mock(TokenRevocationService.class));
   private final MockHttpServletRequest request = new MockHttpServletRequest();
 
   private static JwtProperties properties() {
