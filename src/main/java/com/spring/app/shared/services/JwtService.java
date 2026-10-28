@@ -1,11 +1,11 @@
 package com.spring.app.shared.services;
 
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtParser;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import lombok.RequiredArgsConstructor;
 
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,10 +24,23 @@ import com.spring.app.modules.auth.entities.User;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 
 @Service
-@RequiredArgsConstructor
 public class JwtService implements JwtServiceInterface {
 
   private final JwtProperties jwtProperties;
+  private final SecretKey signingKey;
+  private final JwtParser parser;
+
+  /**
+   * Decodes the signing key once. {@link JwtProperties#isSecretKeyStrong()}
+   * has already rejected a non-Base64 or short secret at startup;
+   * {@link Keys#hmacShaKeyFor} re-checks the 256-bit floor for callers that
+   * build the properties by hand.
+   */
+  public JwtService(JwtProperties jwtProperties) {
+    this.jwtProperties = jwtProperties;
+    this.signingKey = Keys.hmacShaKeyFor(Base64.getDecoder().decode(jwtProperties.getSecretKey().trim()));
+    this.parser = Jwts.parser().verifyWith(signingKey).build();
+  }
 
   /**
    * Retrieves the username from the given JWT token.
@@ -92,7 +105,7 @@ public class JwtService implements JwtServiceInterface {
       .subject(userDetails.getUsername())
       .issuedAt(new Date(System.currentTimeMillis()))
       .expiration(new Date(System.currentTimeMillis() + expiration))
-      .signWith(getSignInKey(), Jwts.SIG.HS256)
+      .signWith(signingKey, Jwts.SIG.HS256)
       .compact();
   }
 
@@ -110,15 +123,6 @@ public class JwtService implements JwtServiceInterface {
   }
 
   private Claims extractAllClaims(String token) {
-    return Jwts.parser()
-      .verifyWith(getSignInKey())
-      .build()
-      .parseSignedClaims(token)
-      .getPayload();
-  }
-
-  private SecretKey getSignInKey() {
-    byte[] keyBytes = Decoders.BASE64.decode(jwtProperties.getSecretKey());
-    return Keys.hmacShaKeyFor(keyBytes);
+    return parser.parseSignedClaims(token).getPayload();
   }
 }
