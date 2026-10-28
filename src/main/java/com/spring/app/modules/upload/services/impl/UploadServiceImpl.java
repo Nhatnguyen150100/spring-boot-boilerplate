@@ -2,6 +2,7 @@ package com.spring.app.modules.upload.services.impl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -21,7 +22,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.InvalidMediaTypeException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -192,9 +193,13 @@ public class UploadServiceImpl implements UploadServiceInterface {
     if (!Files.isRegularFile(filePath) || !Files.isReadable(filePath)) {
       throw new ResourceNotFoundException("File not found");
     }
+    // Encodes non-ASCII names (RFC 5987 filename*) and escapes quotes.
+    ContentDisposition disposition = ContentDisposition.attachment()
+      .filename(filePath.getFileName().toString(), StandardCharsets.UTF_8)
+      .build();
     return ResponseEntity.ok()
       .contentType(MediaType.APPLICATION_OCTET_STREAM)
-      .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filePath.getFileName() + "\"")
+      .headers(headers -> headers.setContentDisposition(disposition))
       .body(new FileSystemResource(filePath));
   }
 

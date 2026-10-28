@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -19,6 +20,8 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
@@ -148,6 +151,21 @@ class UploadServiceImplTest {
 
     assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
     assertThat(response.getBody().getContentAsString(StandardCharsets.UTF_8)).isEqualTo("hello");
+  }
+
+  @Test
+  void downloadHeaderCarriesNonAsciiFileName() {
+    String name = "b\u00e1o c\u00e1o.pdf"; // "báo cáo.pdf", escaped so the source encoding cannot matter
+    assumeTrue(fileSystemCanStore(name), "platform file-name encoding cannot represent non-ASCII names");
+    UploadServiceImpl service = newService();
+    service.storeFile(new MockMultipartFile("file", name, "application/pdf", "%PDF".getBytes(StandardCharsets.UTF_8)));
+
+    String header = service.downFile(name).getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+
+    assertThat(header)
+      .startsWith("attachment;")
+      .contains("filename*=UTF-8''b%C3%A1o%20c%C3%A1o.pdf");
+    assertThat(ContentDisposition.parse(header).getFilename()).isEqualTo(name);
   }
 
   @Test
@@ -311,6 +329,15 @@ class UploadServiceImplTest {
 
   private Path fileOf(String user, String name) {
     return dir.resolve(user).resolve(name);
+  }
+
+  private boolean fileSystemCanStore(String name) {
+    try {
+      dir.resolve(name);
+      return true;
+    } catch (InvalidPathException ex) {
+      return false;
+    }
   }
 
   private static void makeOlderThanStaleAge(Path file) throws IOException {
