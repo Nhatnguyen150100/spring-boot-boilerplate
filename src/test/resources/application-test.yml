@@ -7,11 +7,13 @@
 #       here cannot be overridden by it.
 #    2. Spring's placeholder resolution (${ASYNC_TASK_CORE_SIZE:5} etc. in
 #       application.yml) also checks plain OS environment variables, which a
-#       literal here shields against too. Any property bound to an
-#       @jakarta.validation constraint MUST be overridden with a literal below
-#       -- otherwise an exported shell variable of the same name (common in a
-#       long-lived dev shell or a CI runner) can fail validation and break the
-#       build for a reason that has nothing to do with the code under test.
+#       literal here shields against too. Any validation-constrained property
+#       whose application.yml value comes from a ${ENV_VAR} placeholder MUST be
+#       overridden with a literal below -- otherwise an exported shell variable
+#       of the same name (common in a long-lived dev shell or a CI runner) can
+#       fail validation and break the build for a reason that has nothing to do
+#       with the code under test. Constrained properties that are already
+#       literals in application.yml (application.rate-limit.*) need no override.
 # =============================================================================
 
 spring:
