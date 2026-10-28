@@ -152,6 +152,13 @@ application:
   # Restrict OAuth2 sign-in to these e-mail domains. Empty = accept any domain.
   oauth2-allowed-email-domains: ${OAUTH2_ALLOWED_EMAIL_DOMAINS:}
 
+  # Authentication behaviour (configs/properties/AuthProperties.java).
+  auth:
+    # Dev convenience: new accounts start ACTIVE, without the e-mail OTP. Only
+    # honoured while the dev profile is ALSO active; ignored (with a WARN) in
+    # every other profile.
+    skip-email-verification: ${AUTH_SKIP_EMAIL_VERIFICATION:false}
+
   security:
     jwt:
       # Dev-only fallback so a fresh clone boots without setup. The prod profile

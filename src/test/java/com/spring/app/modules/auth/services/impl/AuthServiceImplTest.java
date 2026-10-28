@@ -19,7 +19,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -31,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -39,9 +39,9 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import com.spring.app.common.response.BaseResponse;
+import com.spring.app.configs.properties.AuthProperties;
 import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
@@ -86,6 +86,8 @@ class AuthServiceImplTest {
 
   final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
+  @Spy AuthProperties authProperties = new AuthProperties();
+  @Spy MockEnvironment environment = new MockEnvironment();
   @Spy JwtProperties jwtProperties = jwtProperties();
   @Spy JwtService jwtService = new JwtService(jwtProperties);
   @Spy MonitoringService monitoringService = new MonitoringService(meterRegistry);
@@ -124,12 +126,6 @@ class AuthServiceImplTest {
   @AfterEach
   void clearContext() {
     SecurityContextHolder.clearContext();
-  }
-
-  @BeforeEach
-  void setUp() {
-    // AuthServiceImpl reads spring.profiles.active through @Value until Task 5.
-    ReflectionTestUtils.setField(authService, "activeProfile", "test");
   }
 
   private void givenUser(User user) {
@@ -459,5 +455,39 @@ class AuthServiceImplTest {
     assertThatThrownBy(() -> authService.forgotPassword("user@example.com"))
         .isInstanceOf(RateLimitExceededException.class);
     assertThat(count("auth.ratelimit.rejected", "bucket", "auth_email")).isEqualTo(1.0);
+  }
+
+  // ---- Task 5: e-mail verification opt-in ---------------------------------------
+
+  @Test
+  void registrationRequiresEmailVerificationByDefaultEvenInDev() {
+    environment.setActiveProfiles("dev");
+
+    authService.register(registerDto("new@example.com"));
+
+    assertThat(savedUser().getStatus()).isEqualTo(EUserStatus.PENDING);
+    verify(otpEmailService).sendOtpEmailAsync("new@example.com");
+  }
+
+  @Test
+  void skippingVerificationNeedsTheFlagAndTheDevProfile() {
+    authProperties.setSkipEmailVerification(true);
+    environment.setActiveProfiles("dev");
+
+    authService.register(registerDto("new@example.com"));
+
+    assertThat(savedUser().getStatus()).isEqualTo(EUserStatus.ACTIVE);
+    verifyNoInteractions(otpEmailService);
+  }
+
+  @Test
+  void theFlagIsIgnoredOutsideTheDevProfile() {
+    authProperties.setSkipEmailVerification(true);
+    environment.setActiveProfiles("prod");
+
+    authService.register(registerDto("new@example.com"));
+
+    assertThat(savedUser().getStatus()).isEqualTo(EUserStatus.PENDING);
+    verify(otpEmailService).sendOtpEmailAsync("new@example.com");
   }
 }

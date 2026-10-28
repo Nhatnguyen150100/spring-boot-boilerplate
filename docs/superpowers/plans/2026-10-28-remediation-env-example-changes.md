@@ -75,3 +75,20 @@ No change expected: `MAIL_MAX_CONCURRENT_SENDS` was never documented in `.env.ex
 If a line for it exists anyway, delete it (`application.mail.max-concurrent-sends` no
 longer exists and `MailProperties` binds strictly). Concurrency is now capped by
 `ASYNC_EMAIL_MAX_SIZE`.
+
+## P3 Task 5 (e-mail verification skip is an explicit dev-only opt-in)
+
+Append (e.g. next to the other auth/app settings, or at the end under a
+`# --- Auth (application.auth) ---` header), commented out like other
+dev-only conveniences:
+
+```
+# Dev only: new accounts start ACTIVE without the e-mail OTP. Honoured ONLY when
+# the dev profile is also active; ignored (with a WARN) in every other profile.
+# Leave false/unset outside local development.
+AUTH_SKIP_EMAIL_VERIFICATION=false
+```
+
+Notes: default in `application.yml` is `false` (read by
+`application.auth.skip-email-verification`). Developers who relied on dev
+auto-activation must now set `AUTH_SKIP_EMAIL_VERIFICATION=true` in `.env`.

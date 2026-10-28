@@ -3,7 +3,8 @@ package com.spring.app.modules.auth.services.impl;
 import java.time.Instant;
 import java.util.Optional;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.spring.app.common.response.ResponseBuilder;
+import com.spring.app.configs.properties.AuthProperties;
 import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.enums.EUserStatus;
@@ -63,9 +65,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
   static final String REGISTRATION_REJECTED = "This email cannot be registered";
 
-  @Value("${spring.profiles.active}")
-  private String activeProfile;
-
+  private final AuthProperties authProperties;
+  private final Environment environment;
   private final JwtProperties jwtProperties;
   private final UserRepository userRepository;
   private final RefreshTokenRepository refreshTokenRepository;
@@ -98,6 +99,21 @@ public class AuthServiceImpl implements AuthServiceInterface {
     }
   }
 
+  /**
+   * The OTP step is skipped only when BOTH application.auth.skip-email-verification
+   * is true AND the dev profile is active.
+   */
+  private boolean isEmailVerificationSkipped() {
+    if (!authProperties.isSkipEmailVerification()) {
+      return false;
+    }
+    if (environment.acceptsProfiles(Profiles.of("dev"))) {
+      return true;
+    }
+    log.warn("application.auth.skip-email-verification=true is ignored: the dev profile is not active");
+    return false;
+  }
+
   @Override
   @Transactional
   public ResponseEntity<?> register(RegisterRequestDto dto) {
@@ -113,9 +129,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
         throw new ConflictException(REGISTRATION_REJECTED);
       }
 
-      boolean isDevMode = activeProfile.equals("dev");
+      boolean skipVerification = isEmailVerificationSkipped();
       User newUser = User.builder().email(emailRegister).password(passwordEncoder.encode(dto.password()))
-          .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
+          .status(skipVerification ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
       try {
         userRepository.saveAndFlush(newUser);
       } catch (DataIntegrityViolationException e) {
@@ -124,7 +140,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
       }
 
       // Only once the row exists: an OTP for an account that failed to save is useless.
-      if (!isDevMode) {
+      if (!skipVerification) {
         otpEmailService.sendOtpEmailAsync(emailRegister);
       }
 
