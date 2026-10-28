@@ -43,6 +43,7 @@ application:
     skip-email-verification: false
     login-max-failures: 5
     login-failure-window: 15m
+    oauth2-redirect-path: /oauth2/callback
   security:
     jwt:
       # Test-only, and deliberately not the dev fallback from application.yml -

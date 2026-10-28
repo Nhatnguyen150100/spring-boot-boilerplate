@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
@@ -44,4 +46,13 @@ public class AuthProperties {
   @NotNull(message = "application.auth.login-failure-window is required")
   @DurationMin(seconds = 1, message = "application.auth.login-failure-window must be at least 1s")
   private Duration loginFailureWindow = Duration.ofMinutes(15);
+
+  /**
+   * SPA route, appended to {@code application.frontend-url}, that receives the
+   * OAuth2 result in the URL fragment ({@code #access_token=...} or
+   * {@code #error=...}).
+   */
+  @NotBlank(message = "application.auth.oauth2-redirect-path is required")
+  @Pattern(regexp = "^/.*", message = "application.auth.oauth2-redirect-path must start with '/'")
+  private String oauth2RedirectPath = "/oauth2/callback";
 }

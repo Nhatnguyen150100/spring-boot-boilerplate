@@ -80,6 +80,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   static final String INVALID_ACCESS_TOKEN = "Invalid or expired token";
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
   static final String REGISTRATION_REJECTED = "This email cannot be registered";
+  static final String ACCOUNT_NOT_ACTIVE = "Account is not active";
 
   private final AuthProperties authProperties;
   private final Environment environment;
@@ -321,6 +322,22 @@ public class AuthServiceImpl implements AuthServiceInterface {
     });
     otpFunction.removeOtp(email);
     return ResponseBuilder.success("Password reset successfully");
+  }
+
+  @Override
+  public TokenResponseDto issueTokensForOAuth2Login(String rawEmail) {
+    // Re-checked here even though CustomOAuth2UserService already refused
+    // non-ACTIVE accounts: the status may have changed in between.
+    User user = Optional.ofNullable(EmailNormalizer.normalize(rawEmail))
+        .flatMap(userRepository::findByEmail)
+        .filter(candidate -> candidate.getStatus() == EUserStatus.ACTIVE)
+        .orElseThrow(() -> new UserNotActiveException(ACCOUNT_NOT_ACTIVE));
+
+    String accessToken = jwtService.generateToken(user);
+    String refreshToken = createAndStoreRefreshToken(user);
+    monitoringService.recordOAuth2Login(true);
+    log.info("OAuth2 login for user {}", user.getId());
+    return authMapper.newTokenToTokenResponseDto(accessToken, refreshToken);
   }
 
   /** Parses a bearer token for logout. Anything unusable is a 401, never a 500. */

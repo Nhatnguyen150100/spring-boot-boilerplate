@@ -55,4 +55,12 @@ class AuthPropertiesTest {
 
     assertThat(violations(properties)).containsExactly("application.auth.login-failure-window must be at least 1s");
   }
+
+  @Test
+  void theOAuth2RedirectPathMustBeAbsolute() {
+    AuthProperties properties = new AuthProperties();
+    properties.setOauth2RedirectPath("callback");
+
+    assertThat(violations(properties)).containsExactly("application.auth.oauth2-redirect-path must start with '/'");
+  }
 }

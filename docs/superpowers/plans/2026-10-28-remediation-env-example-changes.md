@@ -109,3 +109,21 @@ optional tunables:
 Notes: defaults in `application.yml` are `5` and `15m` (read by
 `application.auth.login-max-failures` / `login-failure-window`; the window uses
 Spring duration syntax and must be at least 1s).
+
+## P3 Task 9 (OAuth2 redirects to the frontend)
+
+Append next to the other `AUTH_*` lines (under the
+`# --- Auth (application.auth) ---` header), commented out like other
+optional tunables:
+
+```
+# SPA route, appended to FRONTEND_URL, that receives the OAuth2 result in the
+# URL fragment (#access_token=...&refresh_token=...&token_type=Bearer or
+# #error=<code>). Must start with '/'.
+# AUTH_OAUTH2_REDIRECT_PATH=/oauth2/callback
+```
+
+Notes: default in `application.yml` is `/oauth2/callback` (read by
+`application.auth.oauth2-redirect-path`). `FRONTEND_URL` (already documented)
+is now also the OAuth2 redirect target, so it must point at the SPA in every
+environment that uses Google sign-in.

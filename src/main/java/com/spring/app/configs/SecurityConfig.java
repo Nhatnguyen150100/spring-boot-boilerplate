@@ -146,21 +146,30 @@ public class SecurityConfig {
    * Configures OAuth2 login settings for the application.
    *
    * <p>
-   * This method sets up the authorization endpoint, redirection endpoint, and
-   * user info endpoint for OAuth2 login. It also specifies custom handlers for
-   * authentication success and failure events.
+   * Google is registered with the {@code openid} scope, so Spring Security
+   * resolves the user through the OIDC user service; both services are set so
+   * the custom checks run either way.
+   * </p>
+   *
+   * <p>
+   * <b>Sticky sessions required:</b> the authorization request (state, nonce)
+   * is kept in the in-memory {@code HttpSession} between the redirect to the
+   * provider and the callback. With more than one instance the load balancer
+   * must route both to the same one (there is deliberately no spring-session).
+   * </p>
    *
    * @param oauth2 The OAuth2LoginConfigurer to configure.
    * @return The configured OAuth2LoginConfigurer.
    */
-
   private OAuth2LoginConfigurer<HttpSecurity> oauth2Login(OAuth2LoginConfigurer<HttpSecurity> oauth2) {
     return oauth2
         .authorizationEndpoint(authorization -> authorization
             .baseUri(WhitelistUrlConstant.OAUTH2_LOGIN_URL))
         .redirectionEndpoint(redirection -> redirection
             .baseUri(WhitelistUrlConstant.OAUTH2_REDIRECT_URL))
-        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
+        .userInfoEndpoint(userInfo -> userInfo
+            .userService(customOAuth2UserService)
+            .oidcUserService(customOAuth2UserService::loadOidcUser))
         .successHandler(oAuth2AuthenticationSuccessHandler)
         .failureHandler(oAuth2AuthenticationFailureHandler);
   }

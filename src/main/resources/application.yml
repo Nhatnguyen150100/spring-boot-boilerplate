@@ -162,6 +162,9 @@ application:
     # refused until the window expires. Successful logins are never counted.
     login-max-failures: ${AUTH_LOGIN_MAX_FAILURES:5}
     login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:15m}
+    # SPA route, appended to frontend-url, that receives the OAuth2 result in
+    # the URL fragment (#access_token=...&refresh_token=... or #error=...).
+    oauth2-redirect-path: ${AUTH_OAUTH2_REDIRECT_PATH:/oauth2/callback}
 
   security:
     jwt:

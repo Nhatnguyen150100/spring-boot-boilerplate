@@ -63,6 +63,7 @@ import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.modules.auth.dto.response.TokenResponseDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.exceptions.InvalidTokenException;
@@ -674,5 +675,31 @@ class AuthServiceImplTest {
     verify(loginAttemptService, never()).recordFailure(anyString(), anyString());
     verify(loginAttemptService, never()).reset(anyString(), anyString());
     assertThat(count("auth.login.failed", "reason", "bad_credentials")).isZero();
+  }
+
+  // ---- Task 9: OAuth2 token issuance -------------------------------------------------
+
+  @Test
+  void oauth2LoginIssuesTypedTokensForAnActiveAccount() {
+    givenUser(user("user@example.com", EUserStatus.ACTIVE));
+
+    TokenResponseDto tokens = authService.issueTokensForOAuth2Login(" User@Example.com ");
+
+    assertThat(jwtService.isAccessToken(tokens.accessToken())).isTrue();
+    assertThat(jwtService.isRefreshToken(tokens.refreshToken())).isTrue();
+    verify(refreshTokenRepository).save(any(RefreshToken.class));
+    assertThat(count("auth.oauth2.login", "result", "success")).isEqualTo(1.0);
+  }
+
+  @Test
+  void oauth2LoginRefusesUnknownOrNonActiveAccounts() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+
+    for (String email : java.util.Arrays.asList("pending@example.com", "nobody@example.com", null)) {
+      assertThatThrownBy(() -> authService.issueTokensForOAuth2Login(email))
+          .isInstanceOf(UserNotActiveException.class)
+          .hasMessage("Account is not active");
+    }
+    verify(refreshTokenRepository, never()).save(any());
   }
 }
