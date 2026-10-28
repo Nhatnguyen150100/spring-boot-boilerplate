@@ -168,6 +168,16 @@ class GlobalExceptionHandlerTest {
   }
 
   @Test
+  void invalidReturnValueIsAGeneric500() throws Exception {
+    // Return-value validation fails on the server's side: HandlerMethodValidationException with 500.
+    mockMvc.perform(get("/test/invalid-return"))
+        .andExpect(status().isInternalServerError())
+        .andExpect(jsonPath("$.statusCode").value(500))
+        .andExpect(jsonPath("$.message").value("Internal server error"))
+        .andExpect(content().string(not(containsString("secret"))));
+  }
+
+  @Test
   void missingMultipartPartIs400() throws Exception {
     mockMvc.perform(multipart("/test/upload"))
         .andExpect(status().isBadRequest())
@@ -211,6 +221,11 @@ class GlobalExceptionHandlerTest {
     @GetMapping("/min")
     public String min(@RequestParam("value") @Min(value = 5, message = "value must be at least 5") int value) {
       return "ok";
+    }
+
+    @GetMapping("/invalid-return")
+    public @NotBlank(message = "secret return-value detail") String invalidReturn() {
+      return "";
     }
 
     @PostMapping("/upload")

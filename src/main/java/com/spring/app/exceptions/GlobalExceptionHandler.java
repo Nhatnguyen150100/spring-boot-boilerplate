@@ -197,6 +197,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   @Override
   protected ResponseEntity<Object> handleHandlerMethodValidationException(HandlerMethodValidationException ex,
       HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+    if (status.is5xxServerError()) {
+      // Return-value validation failed: a server bug, so the generic text, not the constraint messages.
+      return handleExceptionInternal(ex, null, headers, status, request);
+    }
     String message = ex.getParameterValidationResults().stream()
         .flatMap(result -> result.getResolvableErrors().stream()
             .map(error -> result.getMethodParameter().getParameterName() + ": " + error.getDefaultMessage()))
