@@ -17,9 +17,10 @@ public class RateLimitManagerService {
   private final RedisServiceInterface redisService;
   private final RateLimitProperties rateLimitProperties;
 
-  private static final int DEFAULT_REQUESTS_PER_MINUTE = 60;
-  private static final int DEFAULT_REQUESTS_PER_HOUR = 3600;
-  private static final int DEFAULT_REQUESTS_PER_DAY = 86400;
+  // Fixed-window lengths, in seconds, for the three quotas of every bucket.
+  private static final int MINUTE_WINDOW_SECONDS = 60;
+  private static final int HOUR_WINDOW_SECONDS = 3600;
+  private static final int DAY_WINDOW_SECONDS = 86400;
 
   /**
    * Check rate limit for a specific endpoint type
@@ -39,12 +40,12 @@ public class RateLimitManagerService {
       String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
       String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
 
-      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), DEFAULT_REQUESTS_PER_MINUTE) &&
-          checkRateLimit(hourKey, config.getRequestsPerHour(), DEFAULT_REQUESTS_PER_HOUR) &&
-          checkRateLimit(dayKey, config.getRequestsPerDay(), DEFAULT_REQUESTS_PER_DAY);
+      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), MINUTE_WINDOW_SECONDS) &&
+          checkRateLimit(hourKey, config.getRequestsPerHour(), HOUR_WINDOW_SECONDS) &&
+          checkRateLimit(dayKey, config.getRequestsPerDay(), DAY_WINDOW_SECONDS);
 
     } catch (Exception e) {
-      log.error("Error checking rate limit for {} with identifier: {}", endpointType, identifier, e);
+      log.error("Error checking rate limit for {} with identifier: {}", endpointType, maskIdentifier(identifier), e);
       return true; // Allow request on error
     }
   }
@@ -104,7 +105,8 @@ public class RateLimitManagerService {
       return Math.max(0, maxRequests - count);
 
     } catch (Exception e) {
-      log.error("Error getting remaining requests for {} in {} with identifier: {}", endpointType, time, identifier, e);
+      log.error("Error getting remaining requests for {} in {} with identifier: {}", endpointType, time,
+          maskIdentifier(identifier), e);
       return -1;
     }
   }
@@ -125,10 +127,31 @@ public class RateLimitManagerService {
       redisService.deleteRateLimitKey(hourKey);
       redisService.deleteRateLimitKey(dayKey);
 
-      log.info("Rate limit reset for {} with identifier: {}", endpointType, identifier);
+      log.info("Rate limit reset for {} with identifier: {}", endpointType, maskIdentifier(identifier));
     } catch (Exception e) {
-      log.error("Error resetting rate limit for {} with identifier: {}", endpointType, identifier, e);
+      log.error("Error resetting rate limit for {} with identifier: {}", endpointType, maskIdentifier(identifier), e);
     }
+  }
+
+  /**
+   * Hides the local part of an e-mail inside a rate-limit identifier or key
+   * ({@code rate_limit:AUTH:minute:email:john@x.com} becomes
+   * {@code rate_limit:AUTH:minute:email:j***@x.com}). Values without an
+   * {@code @} (IP addresses, hashed identifiers) are returned unchanged. Use it
+   * for every log line that prints an identifier or key.
+   */
+  static String maskIdentifier(String identifier) {
+    if (identifier == null) {
+      return null;
+    }
+    int at = identifier.indexOf('@');
+    if (at < 0) {
+      return identifier;
+    }
+    int localStart = identifier.lastIndexOf(':', at) + 1;
+    String local = identifier.substring(localStart, at);
+    String visible = local.isEmpty() ? "" : local.substring(0, 1);
+    return identifier.substring(0, localStart) + visible + "***" + identifier.substring(at);
   }
 
   private boolean checkRateLimit(String key, int maxRequests, int windowSeconds) {
@@ -138,13 +161,13 @@ public class RateLimitManagerService {
       long count = redisService.incrementRateLimit(key, windowSeconds);
 
       if (count > maxRequests) {
-        log.warn("Rate limit exceeded for key: {} (count: {}, max: {})", key, count, maxRequests);
+        log.warn("Rate limit exceeded for key: {} (count: {}, max: {})", maskIdentifier(key), count, maxRequests);
         return false;
       }
       return true;
 
     } catch (Exception e) {
-      log.error("Error checking rate limit for key: {}", key, e);
+      log.error("Error checking rate limit for key: {}", maskIdentifier(key), e);
       return true; // Allow request on error
     }
   }
