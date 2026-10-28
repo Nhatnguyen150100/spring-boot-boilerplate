@@ -7,6 +7,7 @@ import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
@@ -58,6 +59,8 @@ public class SecurityConfig {
    * <li>Enables CORS support with the configuration source defined in
    * {@link CorsConfigurationSource}.</li>
    * <li>Disables CSRF protection.</li>
+   * <li>Disables the default {@code /logout} filter (logout is
+   * {@code DELETE /api/v1/auth/logout}).</li>
    * <li>Configures exception handling settings defined in
    * {@link #exceptionHandling(ExceptionHandlingConfigurer)}.</li>
    * <li>Configures session management settings defined in
@@ -81,6 +84,10 @@ public class SecurityConfig {
     return http
         .cors(cors -> cors.configurationSource(corsConfigurationSource))
         .csrf(CsrfConfigurer::disable)
+        // The application logs out through DELETE /api/v1/auth/logout (revokes the
+        // refresh tokens and blacklists the access token); the default /logout
+        // filter would only redirect to /login?logout.
+        .logout(AbstractHttpConfigurer::disable)
         .exceptionHandling(this::exceptionHandling)
         .sessionManagement(this::sessionManagement)
         .authorizeHttpRequests(this::authorizeHttpRequests)

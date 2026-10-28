@@ -28,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter;
 import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -209,6 +210,18 @@ class SecurityRulesIntegrationTest {
     mockMvc.perform(delete("/api/v1/auth/logout").header(AUTHORIZATION, bearer(token)))
         .andExpect(status().isOk());
     verify(redisService).blacklistToken(eq(token), anyLong());
+  }
+
+  @Test
+  void theDefaultLogoutFilterIsNotInTheChain() throws Exception {
+    boolean hasLogoutFilter = filterChainProxy.getFilterChains().stream()
+        .flatMap(chain -> chain.getFilters().stream())
+        .anyMatch(LogoutFilter.class::isInstance);
+    assertThat(hasLogoutFilter).isFalse();
+
+    // Without it nothing answers /logout with a redirect to /login?logout.
+    mockMvc.perform(get("/logout")).andExpect(status().isUnauthorized());
+    mockMvc.perform(post("/logout")).andExpect(status().isUnauthorized());
   }
 
   @Test
