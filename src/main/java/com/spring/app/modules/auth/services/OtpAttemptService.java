@@ -68,7 +68,7 @@ public class OtpAttemptService {
     }
   }
 
-  /** Called after a correct OTP. */
+  /** Called after a correct OTP, and when a new OTP is sent for the same purpose. */
   public void reset(String email, String purpose) {
     try {
       redisTemplate.delete(key(email, purpose));

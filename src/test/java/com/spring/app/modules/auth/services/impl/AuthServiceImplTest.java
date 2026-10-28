@@ -289,6 +289,31 @@ class AuthServiceImplTest {
     verify(refreshTokenRepository).revokeAllByUser(user);
   }
 
+  @Test
+  void logoutEndsTheAccessTokensOfEveryDevice() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(user);
+    when(jwtFunction.extractTokenFromHeader(any())).thenReturn(token);
+    givenUser(user);
+
+    authService.logout(new MockHttpServletRequest());
+
+    verify(tokenRevocationService).revokeAccessTokens(user.getId());
+  }
+
+  @Test
+  void logoutNormalisesTheTokenSubjectBeforeTheLookup() {
+    // A token minted for a legacy mixed-case row still carries that casing.
+    User legacy = user("Legacy.User@Example.COM", EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(legacy);
+    when(jwtFunction.extractTokenFromHeader(any())).thenReturn(token);
+    when(userRepository.findByEmail("legacy.user@example.com")).thenReturn(Optional.of(legacy));
+
+    authService.logout(new MockHttpServletRequest());
+
+    verify(refreshTokenRepository).revokeAllByUser(legacy);
+  }
+
   // ---- Task 3: status checks and enumeration -----------------------------------
 
   @Test
@@ -730,6 +755,34 @@ class AuthServiceImplTest {
   }
 
   @Test
+  void sendingANewOtpClearsTheWrongGuessCounterForThatPurpose() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    otpAttemptService.recordFailure("new@example.com", "activation");
+    otpAttemptService.recordFailure("pending@example.com", "activation");
+    otpAttemptService.recordFailure("active@example.com", "password_reset");
+    assertThat(otpFailureCounters).hasSize(3);
+
+    authService.register(registerDto("new@example.com"));
+    authService.resendOtp("pending@example.com");
+    authService.forgotPassword("active@example.com");
+
+    assertThat(otpFailureCounters).isEmpty();
+  }
+
+  @Test
+  void noOtpSentMeansTheCounterIsLeftAlone() {
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    otpAttemptService.recordFailure("active@example.com", "activation");
+
+    authService.resendOtp("active@example.com");
+    authService.resendOtp("nobody@example.com");
+
+    verify(otpAttemptService, never()).reset(anyString(), anyString());
+    assertThat(otpFailureCounters).hasSize(1);
+  }
+
+  @Test
   void wrongOtpsForUnknownAndKnownEmailsAreHandledAlike() {
     givenUser(user("pending@example.com", EUserStatus.PENDING));
 
@@ -923,7 +976,7 @@ class AuthServiceImplTest {
 
     TokenResponseDto tokens = authService.issueTokensForOAuth2Login(" User@Example.com ");
 
-    assertThat(jwtService.isAccessToken(tokens.accessToken())).isTrue();
+    assertThat(jwtService.parseClaims(tokens.accessToken()).get("token_type", String.class)).isEqualTo("access");
     assertThat(jwtService.isRefreshToken(tokens.refreshToken())).isTrue();
     ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
     verify(refreshTokenRepository).save(saved.capture());

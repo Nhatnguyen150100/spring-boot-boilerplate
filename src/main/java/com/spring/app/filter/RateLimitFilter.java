@@ -35,8 +35,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
 
-  private static final String RETRY_AFTER_SECONDS = "60";
-
   private final AntPathMatcher pathMatcher;
   private final RateLimitManagerService rateLimitManagerService;
   private final HandlerExceptionResolver handlerExceptionResolver;
@@ -60,8 +58,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
       rateLimitManagerService.checkRateLimitAndThrow(bucket, clientIp);
     } catch (RateLimitExceededException e) {
       monitoringService.recordRateLimitRejection(bucket.getEndpointType());
-      // The shortest window; a client over its hourly or daily quota retries in vain, but harmlessly.
-      response.setHeader(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS);
+      // Also set by GlobalExceptionHandler; repeated here for the sendError fallback below.
+      response.setHeader(HttpHeaders.RETRY_AFTER, RateLimitExceededException.RETRY_AFTER_SECONDS);
       if (handlerExceptionResolver.resolveException(request, response, null, e) == null
           && !response.isCommitted()) {
         response.sendError(HttpStatus.TOO_MANY_REQUESTS.value());

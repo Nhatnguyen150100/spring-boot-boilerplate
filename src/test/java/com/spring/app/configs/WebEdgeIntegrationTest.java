@@ -87,7 +87,7 @@ class WebEdgeIntegrationTest {
 
     mockMvc.perform(get("/api/v1/users/me"))
         .andExpect(status().isTooManyRequests())
-        .andExpect(header().string("Retry-After", "60"))
+        .andExpect(header().stringValues("Retry-After", "60")) // once: filter and handler both set it
         .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
         .andExpect(jsonPath("$.statusCode").value(429))
         .andExpect(jsonPath("$.message").value("Rate limit exceeded for API"))

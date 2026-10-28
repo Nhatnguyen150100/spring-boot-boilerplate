@@ -135,6 +135,16 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   /**
+   * Mails a fresh OTP and clears the wrong-guess counter for {@code purpose}:
+   * earlier wrong guesses were against the OTP this one replaces, so they must
+   * not eat into the new OTP's {@link OtpAttemptService} budget.
+   */
+  private void sendOtp(String email, String purpose) {
+    otpAttemptService.reset(email, purpose);
+    otpEmailService.sendOtpEmailAsync(email);
+  }
+
+  /**
    * The OTP step is skipped only when BOTH application.auth.skip-email-verification
    * is true AND the dev profile is active.
    */
@@ -184,7 +194,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
       // Only once the row exists: an OTP for an account that failed to save is useless.
       if (!skipVerification) {
-        otpEmailService.sendOtpEmailAsync(emailRegister);
+        sendOtp(emailRegister, OTP_PURPOSE_ACTIVATION);
       }
 
       var response = authMapper.userToRegisterResponseDto(newUser);
@@ -202,7 +212,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     // Same answer whether the account is unknown, ACTIVE or PENDING.
     userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.PENDING)
-        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
+        .ifPresent(user -> sendOtp(email, OTP_PURPOSE_ACTIVATION));
     return ResponseBuilder.success("If the account is awaiting activation, a new OTP has been sent");
   }
 
@@ -263,7 +273,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
       throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
     }
     Claims claims = parseAccessToken(token);
-    User user = userRepository.findByEmail(claims.getSubject())
+    // Tokens minted for legacy mixed-case rows carry that casing as subject.
+    User user = Optional.ofNullable(EmailNormalizer.normalize(claims.getSubject()))
+        .flatMap(userRepository::findByEmail)
         .orElseThrow(() -> new InvalidTokenException(INVALID_ACCESS_TOKEN));
 
     long remainingSeconds = (claims.getExpiration().getTime() - System.currentTimeMillis()) / 1000;
@@ -271,6 +283,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
       redisService.blacklistToken(token, remainingSeconds);
     }
     refreshTokenRepository.revokeAllByUser(user);
+    // Sign out everywhere: the access tokens of the user's other devices end too.
+    tokenRevocationService.revokeAccessTokens(user.getId());
 
     SecurityContextHolder.clearContext();
     monitoringService.recordLogout();
@@ -317,7 +331,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     throttleByEmail(email);
     userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.ACTIVE)
-        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
+        .ifPresent(user -> sendOtp(email, OTP_PURPOSE_PASSWORD_RESET));
     return ResponseBuilder.success("If your email is registered, you will receive an OTP shortly");
   }
 

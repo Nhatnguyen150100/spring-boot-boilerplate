@@ -63,10 +63,11 @@ public class JwtFunctionUtil {
    * The context is left empty (the request stays anonymous) when the token is
    * a refresh token, has been blacklisted by logout, belongs to an account
    * that is not ACTIVE or no longer exists (DELETED), or was issued before the
-   * account's tokens were revoked (password reset, see
+   * account's tokens were revoked (password reset or logout, see
    * {@link TokenRevocationService}). It also stays empty when the blacklist or
    * the revocation marker cannot be consulted (Redis down): failing open would
    * let a logged-out or reset token work again, so both checks fail closed.
+   * A database failure while loading the user also leaves it anonymous.
    * </p>
    *
    * <p>
@@ -98,6 +99,12 @@ public class JwtFunctionUtil {
       userDetails = userDetailsService.loadUserByUsername(claims.getSubject());
     } catch (UsernameNotFoundException e) {
       // The account no longer exists (or is DELETED): no longer a valid bearer.
+      return;
+    } catch (DataAccessException e) {
+      // Database unreachable: anonymous (public endpoints still work, protected
+      // ones get 401) rather than a 500 from the filter. Type only - the
+      // driver's message can quote the e-mail.
+      log.warn("User lookup failed ({}); treating the request as anonymous", e.getClass().getSimpleName());
       return;
     }
     if (!(userDetails instanceof User user) || user.getStatus() != EUserStatus.ACTIVE) {

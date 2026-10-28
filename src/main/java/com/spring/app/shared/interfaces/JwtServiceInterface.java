@@ -2,8 +2,6 @@ package com.spring.app.shared.interfaces;
 
 import java.util.function.Function;
 
-import org.springframework.security.core.userdetails.UserDetails;
-
 import com.spring.app.modules.auth.entities.User;
 
 import io.jsonwebtoken.Claims;
@@ -29,17 +27,10 @@ public interface JwtServiceInterface {
    */
   Claims parseClaims(String token);
 
-  /** True only for a valid, unexpired token of type {@code access}. Never throws. */
-  boolean isAccessToken(String token);
-
   /** True only for a valid, unexpired token of type {@code refresh}. Never throws. */
   boolean isRefreshToken(String token);
 
   String generateToken(User user);
 
   String generateRefreshToken(User user);
-
-  boolean isTokenValid(String token, UserDetails userDetails);
-
-  long getRemainingExpirationSeconds(String token);
 }

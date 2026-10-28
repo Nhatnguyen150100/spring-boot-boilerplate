@@ -38,11 +38,12 @@ public class ApplicationProperties {
   /**
    * Public base URL of the frontend. The OAuth2 login redirects the browser
    * here with the issued tokens (or an error) in the URL fragment, so it must
-   * be an absolute http(s) URL.
+   * be an absolute http(s) URL with no query or fragment of its own: the
+   * redirect appends a path and a {@code #fragment} to it.
    */
   @NotBlank(message = "application.frontend-url must not be blank")
-  @Pattern(regexp = "^https?://\\S+$",
-      message = "application.frontend-url must be an absolute http:// or https:// URL")
+  @Pattern(regexp = "^https?://[^\\s?#]+$",
+      message = "application.frontend-url must be an absolute http:// or https:// URL without a query or fragment")
   private String frontendUrl = "http://localhost:3000";
 
   /**

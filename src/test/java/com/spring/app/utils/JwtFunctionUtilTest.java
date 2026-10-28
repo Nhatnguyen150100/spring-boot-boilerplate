@@ -12,6 +12,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -28,6 +32,7 @@ import com.spring.app.shared.services.JwtService;
 
 import io.jsonwebtoken.JwtException;
 
+@ExtendWith(OutputCaptureExtension.class)
 class JwtFunctionUtilTest {
 
   private static final String SECRET = "dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==";
@@ -161,5 +166,20 @@ class JwtFunctionUtilTest {
     jwtFunction.authenticateAccessToken(jwtService.generateToken(user), request);
 
     assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+  }
+
+  @Test
+  void databaseFailureDuringTheUserLookupLeavesTheRequestAnonymous(CapturedOutput output) {
+    User user = user(EUserStatus.ACTIVE);
+    when(userDetailsService.loadUserByUsername("user@example.com"))
+        .thenThrow(new DataAccessResourceFailureException("Cannot load user@example.com"));
+
+    jwtFunction.authenticateAccessToken(jwtService.generateToken(user), request);
+
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    assertThat(output.getAll())
+        .contains("WARN")
+        .contains("DataAccessResourceFailureException")
+        .doesNotContain("user@example.com");
   }
 }

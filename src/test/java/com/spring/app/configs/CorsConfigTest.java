@@ -33,6 +33,8 @@ class CorsConfigTest {
     assertThat(configuration.getAllowedMethods()).containsExactly("GET", "POST", "PUT", "DELETE", "OPTIONS");
     assertThat(configuration.getAllowedHeaders()).contains("Authorization", "Content-Type");
     assertThat(configuration.getMaxAge()).isEqualTo(600L);
+    // A browser SPA can only read Retry-After on a 429 if it is exposed.
+    assertThat(configuration.getExposedHeaders()).contains("Retry-After", "Content-Disposition");
   }
 
   @Test

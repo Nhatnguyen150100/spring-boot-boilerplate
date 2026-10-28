@@ -19,8 +19,10 @@ public interface AuthServiceInterface {
   ResponseEntity<?> activeAccount(ActiveAccountRequestDto activeAccountRequestDto);
 
   /**
-   * @param clientIp the caller's address ({@code request.getRemoteAddr()});
-   *                 failed attempts are counted per e-mail + IP
+   * @param clientIp the caller's client key
+   *                 ({@link com.spring.app.utils.ClientKeys#clientKey}: the
+   *                 resolved client address, IPv6 reduced to its /64);
+   *                 failed attempts are counted per e-mail + client key
    */
   ResponseEntity<?> login(LoginRequestDto dto, String clientIp);
 

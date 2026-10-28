@@ -15,7 +15,6 @@ import java.util.function.Function;
 
 import javax.crypto.SecretKey;
 
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.configs.properties.JwtProperties;
@@ -63,11 +62,6 @@ public class JwtService implements JwtServiceInterface {
   }
 
   @Override
-  public boolean isAccessToken(String token) {
-    return hasType(token, ACCESS_TOKEN_TYPE);
-  }
-
-  @Override
   public boolean isRefreshToken(String token) {
     return hasType(token, REFRESH_TOKEN_TYPE);
   }
@@ -80,19 +74,6 @@ public class JwtService implements JwtServiceInterface {
   @Override
   public String generateRefreshToken(User user) {
     return buildToken(user, REFRESH_TOKEN_TYPE, jwtProperties.getRefreshExpiration());
-  }
-
-  @Override
-  public boolean isTokenValid(String token, UserDetails userDetails) {
-    final String username = extractUsername(token);
-    return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
-  }
-
-  @Override
-  public long getRemainingExpirationSeconds(String token) {
-    Date expiration = extractClaim(token, Claims::getExpiration);
-    long remainingMs = expiration.getTime() - System.currentTimeMillis();
-    return Math.max(0, remainingMs / 1000);
   }
 
   private String buildToken(User user, String tokenType, long expiration) {
@@ -121,10 +102,6 @@ public class JwtService implements JwtServiceInterface {
     extraClaims.put("id", user.getId());
     extraClaims.put("role", user.getRole());
     return extraClaims;
-  }
-
-  private boolean isTokenExpired(String token) {
-    return extractClaim(token, Claims::getExpiration).before(new Date());
   }
 
   private boolean hasType(String token, String expectedType) {

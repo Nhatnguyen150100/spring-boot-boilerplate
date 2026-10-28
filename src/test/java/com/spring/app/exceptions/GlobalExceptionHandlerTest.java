@@ -110,6 +110,14 @@ class GlobalExceptionHandlerTest {
         .andExpect(content().string(not(containsString("a@b.c"))));
   }
 
+  /** Login lockout and per-e-mail throttles throw from services, not from RateLimitFilter. */
+  @Test
+  void everyTooManyRequestsCarriesRetryAfter() throws Exception {
+    mockMvc.perform(get("/test/throw/{kind}", "rate-limit"))
+        .andExpect(status().isTooManyRequests())
+        .andExpect(header().string("Retry-After", "60"));
+  }
+
   @Test
   void noResourceFoundIs404() throws Exception {
     mockMvc.perform(get("/test/throw/no-resource"))

@@ -61,6 +61,19 @@ class ApplicationPropertiesTest {
         });
   }
 
+  /** The OAuth2 result is appended as path + #fragment; a query or fragment here would corrupt it. */
+  @ParameterizedTest
+  @ValueSource(strings = { "https://app.example.com/?next=x", "https://app.example.com?a=1", "https://app.example.com/#home",
+      "https://app.example.com#x" })
+  void rejectsAFrontendUrlWithAQueryOrFragment(String value) {
+    runner.withPropertyValues("application.frontend-url=" + value)
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).rootCause()
+              .hasMessageContaining("application.frontend-url must be an absolute http:// or https:// URL");
+        });
+  }
+
   @Test
   void acceptsAFrontendUrlWithAPort() {
     runner.withPropertyValues("application.frontend-url=http://localhost:3000")
