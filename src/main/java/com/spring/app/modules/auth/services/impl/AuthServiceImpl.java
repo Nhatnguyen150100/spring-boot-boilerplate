@@ -15,7 +15,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.spring.app.common.response.ResponseBuilder;
 import com.spring.app.configs.properties.AuthProperties;
@@ -31,6 +31,7 @@ import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.modules.auth.dto.response.TokenResponseDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.exceptions.InvalidTokenException;
@@ -55,6 +56,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Authentication use cases.
+ *
+ * <p>
+ * <b>Transactions:</b> no method here is {@code @Transactional}. An open
+ * transaction pins a Hikari connection, and with virtual threads the pool
+ * (not Tomcat's thread count) is the concurrency cap - so BCrypt, JWT signing
+ * and Redis round-trips must never run inside one. A single write relies on
+ * the repository's own transaction; a step with several writes wraps only
+ * those writes in {@link TransactionTemplate}.
+ * </p>
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -82,6 +95,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final AuthCacheService authCacheService;
   private final RedisServiceInterface redisService;
   private final RateLimitManagerService rateLimitManagerService;
+  private final TransactionTemplate transactionTemplate;
 
   /**
    * Per-email throttle for sensitive auth actions (OTP send/verify, login).
@@ -117,7 +131,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> register(RegisterRequestDto dto) {
     Timer.Sample timer = monitoringService.startRegistrationTimer();
     try {
@@ -172,7 +185,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
     String email = EmailNormalizer.normalize(dto.email());
     throttleByEmail(email);
@@ -195,7 +207,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> login(LoginRequestDto dto) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
@@ -217,7 +228,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> logout(HttpServletRequest request) {
     String token = jwtFunction.extractTokenFromHeader(request);
     if (token == null) {
@@ -240,32 +250,31 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
     String presented = dto.refreshToken();
     if (!jwtService.isRefreshToken(presented)) {
       throw rejectRefresh();
     }
-    RefreshToken oldToken = refreshTokenRepository.findByToken(presented)
+    RefreshToken stored = refreshTokenRepository.findByToken(presented)
         .filter(token -> !token.isRevoked())
         .filter(token -> token.getExpiryDate() != null && token.getExpiryDate().isAfter(Instant.now()))
         .orElseThrow(this::rejectRefresh);
 
-    User user = oldToken.getUser();
+    User user = stored.getUser();
     // A DELETED / INACTIVE / PENDING account must not keep minting tokens.
     if (user.getStatus() != EUserStatus.ACTIVE) {
       throw rejectRefresh();
     }
 
-    oldToken.setRevoked(true);
-    refreshTokenRepository.save(oldToken);
-
-    String accessToken = jwtService.generateToken(user);
-    String newRefreshToken = createAndStoreRefreshToken(user);
-
-    var response = authMapper.newTokenToTokenResponseDto(accessToken, newRefreshToken);
+    TokenResponseDto tokens = transactionTemplate.execute(status -> {
+      // Conditional UPDATE: of two concurrent refreshes with this token, one wins.
+      if (refreshTokenRepository.revokeIfActive(presented) != 1) {
+        throw rejectRefresh();
+      }
+      return authMapper.newTokenToTokenResponseDto(jwtService.generateToken(user), createAndStoreRefreshToken(user));
+    });
     monitoringService.recordTokenRefresh(true);
-    return ResponseBuilder.success("Token refreshed successfully", response);
+    return ResponseBuilder.success("Token refreshed successfully", tokens);
   }
 
   @Override
@@ -279,7 +288,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  @Transactional
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
     String email = EmailNormalizer.normalize(dto.email());
     throttleByEmail(email);
@@ -294,10 +302,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
     }
 
     User user = active.get();
-    user.setPassword(passwordEncoder.encode(dto.newPassword()));
-    userRepository.save(user);
+    String encodedPassword = passwordEncoder.encode(dto.newPassword()); // BCrypt outside the transaction
+    transactionTemplate.executeWithoutResult(status -> {
+      user.setPassword(encodedPassword);
+      userRepository.save(user);
+      refreshTokenRepository.revokeAllByUser(user);
+    });
     otpFunction.removeOtp(email);
-    refreshTokenRepository.revokeAllByUser(user);
     return ResponseBuilder.success("Password reset successfully");
   }
 

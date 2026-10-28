@@ -8,12 +8,15 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +26,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -41,6 +45,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.AuthProperties;
@@ -96,6 +102,8 @@ class AuthServiceImplTest {
   @Spy MonitoringService monitoringService = new MonitoringService(meterRegistry);
   @Spy AuthMapper authMapper = new AuthMapperImpl();
   @Spy PasswordEncoder passwordEncoder = new BCryptPasswordEncoder(4);
+  final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+  @Spy TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
 
   @Mock UserRepository userRepository;
   @Mock RefreshTokenRepository refreshTokenRepository;
@@ -142,6 +150,7 @@ class AuthServiceImplTest {
         .expiryDate(Instant.now().plusSeconds(3600))
         .build();
     when(refreshTokenRepository.findByToken(token)).thenReturn(Optional.of(stored));
+    when(refreshTokenRepository.revokeIfActive(token)).thenReturn(1);
     return stored;
   }
 
@@ -544,5 +553,60 @@ class AuthServiceImplTest {
         .startsWith("email:")
         .doesNotContain("user@example.com")
         .isEqualTo(ids.getAllValues().get(1));
+  }
+
+  // ---- Task 7: transactions -------------------------------------------------------
+
+  @Test
+  void noAuthMethodHoldsATransactionAcrossRedisOrBcrypt() {
+    assertThat(AuthServiceImpl.class.isAnnotationPresent(
+        org.springframework.transaction.annotation.Transactional.class)).isFalse();
+    for (Method method : AuthServiceImpl.class.getDeclaredMethods()) {
+      assertThat(method.isAnnotationPresent(org.springframework.transaction.annotation.Transactional.class))
+          .as(method.getName())
+          .isFalse();
+    }
+  }
+
+  @Test
+  void refreshRotatesTheTokenOnce() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateRefreshToken(user);
+    givenStoredRefreshToken(token, user);
+
+    authService.refreshToken(new RefreshTokenDto(token));
+
+    verify(refreshTokenRepository).revokeIfActive(token);
+    verify(refreshTokenRepository).save(any(RefreshToken.class));
+    verify(transactionManager).commit(any());
+  }
+
+  @Test
+  void refreshThatLosesTheRotationRaceIsRejected() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateRefreshToken(user);
+    givenStoredRefreshToken(token, user);
+    when(refreshTokenRepository.revokeIfActive(token)).thenReturn(0);
+
+    assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
+        .isInstanceOf(InvalidTokenException.class);
+    verify(refreshTokenRepository, never()).save(any());
+    verify(transactionManager).rollback(any());
+  }
+
+  @Test
+  void passwordResetHashesBeforeOpeningTheTransaction() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    givenUser(user);
+    when(otpFunction.validateOtp("active@example.com", "123456")).thenReturn(true);
+
+    authService.resetPassword(new ResetPasswordRequestDto("active@example.com", "123456", "NewStr0ng!Pass"));
+
+    InOrder order = inOrder(passwordEncoder, transactionManager, userRepository, refreshTokenRepository);
+    order.verify(passwordEncoder).encode("NewStr0ng!Pass");
+    order.verify(transactionManager).getTransaction(any());
+    order.verify(userRepository).save(user);
+    order.verify(refreshTokenRepository).revokeAllByUser(user);
+    order.verify(transactionManager).commit(any());
   }
 }
