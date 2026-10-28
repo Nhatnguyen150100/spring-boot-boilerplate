@@ -101,6 +101,9 @@ services:
       - DB_PORT=3306
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      # The bundled redis service speaks plain TCP on the private network. The
+      # prod profile defaults Redis TLS to on, which would fail every connection.
+      - REDIS_SSL_ENABLED=false
       - UPLOAD_DIR=/app/uploads
       - LOG_PATH=/var/log/springapp
     volumes:

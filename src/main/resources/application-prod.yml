@@ -32,6 +32,9 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
       ssl:
+        # TLS by default for a managed Redis. This is now actually applied, so
+        # docker-compose.prod.yml sets REDIS_SSL_ENABLED=false for its bundled
+        # plain-TCP redis:7-alpine.
         enabled: ${REDIS_SSL_ENABLED:true}
 
   security:

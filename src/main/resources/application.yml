@@ -72,7 +72,12 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      timeout: 60000
+      # Applied by Spring Boot's Lettuce auto-configuration (RedisConfig does not
+      # build its own connection factory). `timeout` bounds every command,
+      # `connect-timeout` the TCP/TLS handshake. Keep them short: rate limiting
+      # fails open on a Redis error, but a hung command blocks the request.
+      timeout: ${REDIS_TIMEOUT:2s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
