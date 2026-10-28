@@ -176,10 +176,9 @@ application:
     max-concurrent-sends: ${MAIL_MAX_CONCURRENT_SENDS:5}
 
   cache:
-    default-ttl: ${CACHE_DEFAULT_TTL:30m}
+    # Only immutable DTOs are cached, never JPA entities (see CacheConfig).
+    # One cache today: userProfile (UserResponseDto by user id).
     users-ttl: ${CACHE_USERS_TTL:10m}
-    tokens-ttl: ${CACHE_TOKENS_TTL:5m}
-    cache-null-values: false
 
   async:
     # E-mail runs on virtual threads (AsyncConfig) and needs no pool settings;

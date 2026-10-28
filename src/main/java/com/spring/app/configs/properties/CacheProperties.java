@@ -15,6 +15,8 @@ import lombok.Data;
  * <p>
  * Durations use the shorthand Spring Boot understands ({@code 30m},
  * {@code 5s}, {@code 1h}), which reviews better than a raw millisecond count.
+ * Only caches declared in {@code CacheConfig} exist, so there is no default
+ * TTL; and {@code null} is never cached.
  * </p>
  */
 @Data
@@ -23,21 +25,7 @@ import lombok.Data;
 @ConfigurationProperties(prefix = "application.cache", ignoreUnknownFields = false)
 public class CacheProperties {
 
-  /** TTL applied to every cache without a specific entry below. */
-  @NotNull
-  private Duration defaultTtl = Duration.ofMinutes(30);
-
-  /** TTL for the {@code users} and {@code userProfile} caches. */
+  /** TTL for the {@code userProfile} cache ({@code UserResponseDto} by id). */
   @NotNull
   private Duration usersTtl = Duration.ofMinutes(10);
-
-  /** TTL for the {@code tokens} cache. */
-  @NotNull
-  private Duration tokensTtl = Duration.ofMinutes(5);
-
-  /**
-   * Whether {@code null} results are cached. Off by default, so a miss is not
-   * remembered as "no such row".
-   */
-  private boolean cacheNullValues = false;
 }

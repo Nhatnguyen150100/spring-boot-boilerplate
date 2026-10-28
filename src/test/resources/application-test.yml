@@ -61,9 +61,7 @@ application:
     storage:
       upload-dir: uploads-test
   cache:
-    default-ttl: 30m
     users-ttl: 10m
-    tokens-ttl: 5m
   async:
     task:
       core-size: 1
