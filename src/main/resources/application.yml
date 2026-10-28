@@ -108,12 +108,15 @@ spring:
       enabled: false
 
   threads:
-    # Serve each request (and @Scheduled task) on a virtual thread. Almost every
-    # request blocks on JDBC, Redis or SMTP, which is what virtual threads are
-    # for. Pinning risk is low on Java 21: the app has no synchronized blocks,
-    # and mysql-connector-j 9.x / HikariCP 6.x use java.util.concurrent locks.
-    # Request concurrency is no longer capped by Tomcat's thread pool, so
-    # hikari.maximum-pool-size is now the real limit on concurrent DB work.
+    # Serve each HTTP request (and @Scheduled task) on a virtual thread; almost
+    # every request blocks on JDBC or Redis. Request concurrency is no longer
+    # capped by Tomcat's thread pool, so hikari.maximum-pool-size is now the
+    # real limit on concurrent DB work.
+    # E-mail deliberately does NOT run on virtual threads: jakarta.mail's
+    # SMTPTransport does socket I/O inside synchronized methods, which pins the
+    # carrier thread on Java 21, so slow SMTP servers would stall request
+    # handling. @Async e-mail runs on the bounded platform-thread pool
+    # application.async.email instead (see AsyncConfig).
     virtual:
       enabled: true
 
@@ -181,12 +184,19 @@ application:
     users-ttl: ${CACHE_USERS_TTL:10m}
 
   async:
-    # E-mail runs on virtual threads (AsyncConfig) and needs no pool settings;
-    # see mail.max-concurrent-sends for its limit.
     task:
       core-size: ${ASYNC_TASK_CORE_SIZE:5}
       max-size: ${ASYNC_TASK_MAX_SIZE:10}
       queue-capacity: ${ASYNC_TASK_QUEUE_CAPACITY:25}
+    # Platform threads for outgoing e-mail (emailExecutor). max-size is the cap
+    # on concurrent SMTP sessions - keep it at or below your provider's limit.
+    # A ThreadPoolExecutor only grows past core-size once the queue is full,
+    # hence core-size = max-size by default. Sends beyond queue-capacity are
+    # logged and dropped (the user can request a new OTP).
+    email:
+      core-size: ${ASYNC_EMAIL_CORE_SIZE:5}
+      max-size: ${ASYNC_EMAIL_MAX_SIZE:5}
+      queue-capacity: ${ASYNC_EMAIL_QUEUE_CAPACITY:100}
 
   # Quotas are identical in every environment today, so they are declared once
   # here. Override a single bucket in a profile file if that ever changes.

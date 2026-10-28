@@ -67,6 +67,10 @@ application:
       core-size: 1
       max-size: 1
       queue-capacity: 1
+    email:
+      core-size: 1
+      max-size: 1
+      queue-capacity: 1
 
 logging:
   level:
