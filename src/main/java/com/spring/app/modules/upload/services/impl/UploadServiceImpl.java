@@ -3,6 +3,7 @@ package com.spring.app.modules.upload.services.impl;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -173,8 +174,9 @@ public class UploadServiceImpl implements UploadServiceInterface {
       log.info("File {} has been saved for user {}", fileName, ownerDir.getFileName());
       return ResponseBuilder.success("File uploaded successfully", fileName);
     } catch (IOException ex) {
-      log.error("Error saving file: {}", fileName, ex);
-      throw new BadRequestException("Cannot save file");
+      // Disk/permission trouble is not the client's fault: GlobalExceptionHandler answers 500 with a generic message.
+      log.error("Error saving file {} for user {}", fileName, ownerDir.getFileName(), ex);
+      throw new UncheckedIOException("Cannot save file", ex);
     } finally {
       deleteTempFile(tempPath);
     }
@@ -211,7 +213,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
   @Override
   public ResponseEntity<Resource> downFile(String filename) {
     Path filePath = resolveInOwnerDir(ownerDir(), filename);
-    if (!Files.isRegularFile(filePath) || !Files.isReadable(filePath)) {
+    // A symlink planted in the folder must never be served.
+    if (!Files.isRegularFile(filePath, LinkOption.NOFOLLOW_LINKS) || !Files.isReadable(filePath)) {
       throw new ResourceNotFoundException("File not found");
     }
     // Stored names never contain quotes or control characters (validateFile), so a
@@ -233,16 +236,17 @@ public class UploadServiceImpl implements UploadServiceInterface {
 
   @Override
   public ResponseEntity<?> deleteFile(String filename) {
-    Path filePath = resolveInOwnerDir(ownerDir(), filename);
+    Path ownerDir = ownerDir();
+    Path filePath = resolveInOwnerDir(ownerDir, filename);
     try {
       Files.delete(filePath);
     } catch (NoSuchFileException ex) {
       throw new ResourceNotFoundException("File not found");
     } catch (IOException ex) {
-      log.error("Error deleting file: {}", filename, ex);
-      throw new BadRequestException("Cannot delete file");
+      log.error("Error deleting file {} for user {}", filename, ownerDir.getFileName(), ex);
+      throw new UncheckedIOException("Cannot delete file", ex);
     }
-    log.info("File {} has been deleted", filename);
+    log.info("File {} has been deleted for user {}", filename, ownerDir.getFileName());
     return ResponseBuilder.success("File deleted successfully", filename);
   }
 

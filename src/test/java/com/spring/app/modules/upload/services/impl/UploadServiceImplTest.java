@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -255,6 +256,85 @@ class UploadServiceImplTest {
     assertThat(fileOf(USER_A, "x.txt")).hasContent("hello");
     assertThat(dir.resolve("x.txt")).doesNotExist();
     assertThat(dir.getParent().resolve("x.txt")).doesNotExist();
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = { ".", "..", "/etc/passwd", "a/b", "" })
+  void downloadAndDeleteRejectNamesThatAreNotASingleFileInTheCallersFolder(String name) {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("a.txt", "hello"));
+
+    assertThatThrownBy(() -> service.downFile(name))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file path");
+    assertThatThrownBy(() -> service.deleteFile(name))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file path");
+    assertThat(fileOf(USER_A, "a.txt")).hasContent("hello");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = { ".tmp", "../x", "", "a/b", "/etc", "." })
+  void unusableOwnerIdsAreRefused(String ownerId) {
+    UploadServiceImpl service = newService();
+    currentUser.set(ownerId);
+
+    assertThatThrownBy(() -> service.storeFile(file("a.txt", "hello")))
+      .isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> service.downFile("a.txt")).isInstanceOf(IllegalStateException.class);
+    assertThatThrownBy(() -> service.deleteFile("a.txt")).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void downloadDoesNotFollowASymlinkInTheCallersFolder() throws IOException {
+    Path secret = Files.writeString(Files.createDirectories(dir.resolve("elsewhere")).resolve("secret.txt"), "secret");
+    Path userFolder = Files.createDirectories(dir.resolve(USER_A));
+    try {
+      Files.createSymbolicLink(userFolder.resolve("link.txt"), secret);
+    } catch (UnsupportedOperationException | IOException ex) {
+      assumeTrue(false, "cannot create symbolic links here");
+    }
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.downFile("link.txt"))
+      .isInstanceOf(ResourceNotFoundException.class)
+      .hasMessage("File not found");
+  }
+
+  @Test
+  void failureToWriteIsAServerErrorNotABadRequest() throws IOException {
+    // A regular file where the user's folder should be makes createDirectories fail.
+    Files.writeString(dir.resolve(USER_A), "in the way");
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.storeFile(file("a.txt", "hello")))
+      .isInstanceOf(UncheckedIOException.class)
+      .hasMessage("Cannot save file")
+      .hasCauseInstanceOf(IOException.class);
+    assertTempDirEmpty();
+  }
+
+  @Test
+  void failureToDeleteIsAServerErrorNotABadRequest() throws IOException {
+    // Deleting a non-empty folder fails with an IOException other than NoSuchFileException.
+    Files.writeString(Files.createDirectories(dir.resolve(USER_A).resolve("sub")).resolve("x.txt"), "x");
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.deleteFile("sub"))
+      .isInstanceOf(UncheckedIOException.class)
+      .hasMessage("Cannot delete file")
+      .hasCauseInstanceOf(IOException.class);
+  }
+
+  @Test
+  void deleteRemovesTheCallersFile() {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("a.txt", "hello"));
+
+    BaseResponse<?> body = body(service.deleteFile("a.txt"));
+
+    assertThat(body.getMessage()).isEqualTo("File deleted successfully");
+    assertThat(fileOf(USER_A, "a.txt")).doesNotExist();
   }
 
   @Test
