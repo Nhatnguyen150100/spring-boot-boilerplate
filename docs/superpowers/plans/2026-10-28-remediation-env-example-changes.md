@@ -127,3 +127,20 @@ Notes: default in `application.yml` is `/oauth2/callback` (read by
 `application.auth.oauth2-redirect-path`). `FRONTEND_URL` (already documented)
 is now also the OAuth2 redirect target, so it must point at the SPA in every
 environment that uses Google sign-in.
+
+## P3 final review I3 (per-OTP guess cap)
+
+Append next to the other `AUTH_*` lines (under the
+`# --- Auth (application.auth) ---` header), commented out like other
+optional tunables:
+
+```
+# Wrong guesses allowed per OTP (activation / password reset); the last one
+# discards the OTP and the user has to request a new one. Must be >= 1.
+# AUTH_OTP_MAX_ATTEMPTS=5
+```
+
+Notes: default in `application.yml` is `5` (read by
+`application.auth.otp-max-attempts`). OTP verification
+(`/activate`, `/reset-password`) no longer consumes the per-e-mail AUTH
+rate-limit bucket; only the OTP-sending endpoints do.

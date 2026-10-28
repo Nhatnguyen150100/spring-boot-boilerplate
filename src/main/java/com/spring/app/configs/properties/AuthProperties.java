@@ -48,6 +48,13 @@ public class AuthProperties {
   private Duration loginFailureWindow = Duration.ofMinutes(15);
 
   /**
+   * Wrong guesses allowed per OTP and purpose (activation, password reset);
+   * the last one discards the OTP, so the user has to request a new one.
+   */
+  @Min(value = 1, message = "application.auth.otp-max-attempts must be >= 1")
+  private int otpMaxAttempts = 5;
+
+  /**
    * SPA route, appended to {@code application.frontend-url}, that receives the
    * OAuth2 result in the URL fragment ({@code #access_token=...} or
    * {@code #error=...}).

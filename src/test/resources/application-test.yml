@@ -43,6 +43,7 @@ application:
     skip-email-verification: false
     login-max-failures: 5
     login-failure-window: 15m
+    otp-max-attempts: 5
     oauth2-redirect-path: /oauth2/callback
   security:
     jwt:

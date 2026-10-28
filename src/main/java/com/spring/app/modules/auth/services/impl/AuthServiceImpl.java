@@ -45,6 +45,7 @@ import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 import com.spring.app.modules.auth.services.LoginAttemptService;
+import com.spring.app.modules.auth.services.OtpAttemptService;
 import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.modules.auth.utils.EmailNormalizer;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
@@ -86,6 +87,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
   static final String REGISTRATION_REJECTED = "This email cannot be registered";
   static final String ACCOUNT_NOT_ACTIVE = "Account is not active";
+  static final String OTP_PURPOSE_ACTIVATION = "activation";
+  static final String OTP_PURPOSE_PASSWORD_RESET = "password_reset";
 
   private final AuthProperties authProperties;
   private final Environment environment;
@@ -105,13 +108,18 @@ public class AuthServiceImpl implements AuthServiceInterface {
   private final RateLimitManagerService rateLimitManagerService;
   private final LoginAttemptService loginAttemptService;
   private final TokenRevocationService tokenRevocationService;
+  private final OtpAttemptService otpAttemptService;
   private final TransactionTemplate transactionTemplate;
 
   /**
-   * Per-email throttle for sensitive auth actions (OTP send/verify, login).
-   * Complements the per-IP limit in {@link com.spring.app.filter.RateLimitFilter}
-   * so a single account cannot be brute-forced / email-bombed from many IPs.
-   * The identifier is a hash: it ends up in Redis keys and rate-limit log lines.
+   * Per-email throttle for the actions that SEND an OTP e-mail (register,
+   * resend, forgot-password). Complements the per-IP limit in
+   * {@link com.spring.app.filter.RateLimitFilter} so one mailbox cannot be
+   * e-mail-bombed from many IPs. OTP verification is deliberately not
+   * throttled per e-mail (a stranger could block the owner's own activation);
+   * {@link OtpAttemptService} caps the guesses per OTP instead. Logins are
+   * covered by {@link LoginAttemptService}. The identifier is a hash: it ends
+   * up in Redis keys and rate-limit log lines.
    */
   private void throttleByEmail(String email) {
     if (email == null || email.isBlank()) {
@@ -197,21 +205,20 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
     String email = EmailNormalizer.normalize(dto.email());
-    throttleByEmail(email);
 
     // Unknown e-mail, wrong status and wrong OTP all get the same 400.
     boolean otpValid = otpFunction.validateOtp(email, dto.otp());
     Optional<User> pending = userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.PENDING);
     if (!otpValid || pending.isEmpty()) {
-      monitoringService.recordOtpFailure("activation");
-      throw new BadRequestException(INVALID_OTP);
+      throw rejectOtp(email, OTP_PURPOSE_ACTIVATION, !otpValid);
     }
 
     User user = pending.get();
     user.setStatus(EUserStatus.ACTIVE);
     userRepository.save(user);
     otpFunction.removeOtp(email);
+    otpAttemptService.reset(email, OTP_PURPOSE_ACTIVATION);
     authCacheService.updateCachedUser(user);
     return ResponseBuilder.success("Account activated successfully");
   }
@@ -313,15 +320,13 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
     String email = EmailNormalizer.normalize(dto.email());
-    throttleByEmail(email);
 
     // Unknown e-mail, non-ACTIVE account and wrong OTP all get the same 400.
     boolean otpValid = otpFunction.validateOtp(email, dto.otp());
     Optional<User> active = userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.ACTIVE);
     if (!otpValid || active.isEmpty()) {
-      monitoringService.recordOtpFailure("password_reset");
-      throw new BadRequestException(INVALID_OTP);
+      throw rejectOtp(email, OTP_PURPOSE_PASSWORD_RESET, !otpValid);
     }
 
     User user = active.get();
@@ -334,6 +339,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     // Access tokens are stateless: refuse every one issued before this moment.
     tokenRevocationService.revokeAccessTokens(user.getId());
     otpFunction.removeOtp(email);
+    otpAttemptService.reset(email, OTP_PURPOSE_PASSWORD_RESET);
     return ResponseBuilder.success("Password reset successfully");
   }
 
@@ -366,6 +372,19 @@ public class AuthServiceImpl implements AuthServiceInterface {
       throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
     }
     return claims;
+  }
+
+  /**
+   * The uniform INVALID_OTP answer. A wrong OTP also counts towards the
+   * per-OTP cap; the guess that reaches it discards the OTP, so the response
+   * never changes but further guesses cannot succeed.
+   */
+  private BadRequestException rejectOtp(String email, String purpose, boolean wrongOtp) {
+    if (wrongOtp && otpAttemptService.recordFailure(email, purpose)) {
+      otpFunction.removeOtp(email);
+    }
+    monitoringService.recordOtpFailure(purpose);
+    return new BadRequestException(INVALID_OTP);
   }
 
   private InvalidTokenException rejectRefresh() {

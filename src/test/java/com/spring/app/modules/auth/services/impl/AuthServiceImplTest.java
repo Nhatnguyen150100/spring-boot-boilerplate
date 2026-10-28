@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -20,8 +22,10 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
-import java.util.List;
+import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,6 +43,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.env.MockEnvironment;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -78,6 +84,7 @@ import com.spring.app.modules.auth.mapper.AuthMapperImpl;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.LoginAttemptService;
+import com.spring.app.modules.auth.services.OtpAttemptService;
 import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.AuthCacheService;
@@ -128,7 +135,21 @@ class AuthServiceImplTest {
   @Mock LoginAttemptService loginAttemptService;
   @Mock TokenRevocationService tokenRevocationService;
 
+  /** Real OtpAttemptService over an in-memory stand-in for the Redis counters. */
+  final Map<String, Long> otpFailureCounters = new HashMap<>();
+  @Spy OtpAttemptService otpAttemptService = new OtpAttemptService(counterRedis(otpFailureCounters), new AuthProperties());
+
   @InjectMocks AuthServiceImpl authService;
+
+  @SuppressWarnings("unchecked")
+  static StringRedisTemplate counterRedis(Map<String, Long> counters) {
+    StringRedisTemplate redis = mock(StringRedisTemplate.class);
+    doAnswer(invocation -> counters.merge(((List<String>) invocation.getArgument(1)).get(0), 1L, Long::sum))
+        .when(redis).execute(any(RedisScript.class), anyList(), any());
+    doAnswer(invocation -> counters.remove((String) invocation.getArgument(0)) != null)
+        .when(redis).delete(anyString());
+    return redis;
+  }
 
   static JwtProperties jwtProperties() {
     JwtProperties properties = new JwtProperties();
@@ -594,6 +615,115 @@ class AuthServiceImplTest {
         .startsWith("email:")
         .doesNotContain("user@example.com")
         .isEqualTo(ids.getAllValues().get(1));
+  }
+
+  // ---- Final review: per-OTP guess cap, no per-e-mail throttle on verification ----
+
+  private void activateWith(String otp) {
+    authService.activeAccount(new ActiveAccountRequestDto("pending@example.com", otp));
+  }
+
+  private void resetWith(String otp) {
+    authService.resetPassword(new ResetPasswordRequestDto("active@example.com", otp, "NewStr0ng!Pass"));
+  }
+
+  @Test
+  void theFifthWrongActivationOtpDiscardsTheOtpWithTheSameAnswer() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      assertThatThrownBy(() -> activateWith("000000"))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessage("Invalid or expired OTP");
+      verify(otpFunction, times(attempt == 5 ? 1 : 0)).removeOtp("pending@example.com");
+    }
+    assertThat(otpFailureCounters).as("counter cleared with the OTP").isEmpty();
+  }
+
+  @Test
+  void fourWrongActivationOtpsThenTheRightOneActivates() {
+    User pending = user("pending@example.com", EUserStatus.PENDING);
+    givenUser(pending);
+    when(otpFunction.validateOtp("pending@example.com", "123456")).thenReturn(true);
+
+    for (int attempt = 1; attempt <= 4; attempt++) {
+      catchThrowable(() -> activateWith("000000"));
+    }
+    verify(otpFunction, never()).removeOtp(anyString());
+    activateWith("123456");
+
+    assertThat(pending.getStatus()).isEqualTo(EUserStatus.ACTIVE);
+    assertThat(otpFailureCounters).as("a correct OTP clears the counter").isEmpty();
+  }
+
+  @Test
+  void theFifthWrongPasswordResetOtpDiscardsTheOtp() {
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      assertThatThrownBy(() -> resetWith("000000"))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessage("Invalid or expired OTP");
+    }
+
+    verify(otpFunction).removeOtp("active@example.com");
+    verify(userRepository, never()).save(any());
+  }
+
+  @Test
+  void fourWrongPasswordResetOtpsThenTheRightOneResets() {
+    User active = user("active@example.com", EUserStatus.ACTIVE);
+    givenUser(active);
+    when(otpFunction.validateOtp("active@example.com", "123456")).thenReturn(true);
+
+    for (int attempt = 1; attempt <= 4; attempt++) {
+      catchThrowable(() -> resetWith("000000"));
+    }
+    resetWith("123456");
+
+    verify(userRepository).save(active);
+    assertThat(otpFailureCounters).isEmpty();
+  }
+
+  @Test
+  void activationAndResetCountSeparately() {
+    givenUser(user("both@example.com", EUserStatus.ACTIVE));
+
+    for (int attempt = 1; attempt <= 4; attempt++) {
+      catchThrowable(() -> authService.activeAccount(new ActiveAccountRequestDto("both@example.com", "000000")));
+      catchThrowable(() -> authService.resetPassword(
+          new ResetPasswordRequestDto("both@example.com", "000000", "NewStr0ng!Pass")));
+    }
+
+    verify(otpFunction, never()).removeOtp(anyString());
+  }
+
+  @Test
+  void otpVerificationSkipsThePerEmailThrottleButOtpSendsKeepIt() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+
+    catchThrowable(() -> activateWith("000000"));
+    catchThrowable(() -> resetWith("000000"));
+    verify(rateLimitManagerService, never()).checkRateLimitAndThrow(any(), anyString());
+
+    authService.register(registerDto("new@example.com"));
+    authService.resendOtp("pending@example.com");
+    authService.forgotPassword("active@example.com");
+    verify(rateLimitManagerService, times(3)).checkRateLimitAndThrow(eq(ERateLimitEndpoint.AUTH), anyString());
+  }
+
+  @Test
+  void wrongOtpsForUnknownAndKnownEmailsAreHandledAlike() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+
+    Throwable unknown = catchThrowable(
+        () -> authService.activeAccount(new ActiveAccountRequestDto("nobody@example.com", "000000")));
+    Throwable known = catchThrowable(() -> activateWith("000000"));
+
+    assertThat(unknown).isInstanceOf(BadRequestException.class).hasMessage(known.getMessage());
+    verify(otpAttemptService).recordFailure("nobody@example.com", "activation");
+    verify(otpAttemptService).recordFailure("pending@example.com", "activation");
   }
 
   // ---- Task 7: transactions -------------------------------------------------------
