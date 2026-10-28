@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -35,6 +36,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -43,6 +45,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.AuthProperties;
 import com.spring.app.configs.properties.JwtProperties;
+import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
@@ -489,5 +492,57 @@ class AuthServiceImplTest {
 
     assertThat(savedUser().getStatus()).isEqualTo(EUserStatus.PENDING);
     verify(otpEmailService).sendOtpEmailAsync("new@example.com");
+  }
+
+  // ---- Task 6: normalisation and persisted fields --------------------------------
+
+  @Test
+  void registerStoresTheNormalizedEmailAndKeepsPhoneAndAddress() {
+    authService.register(new RegisterRequestDto(
+        "  New.User@Example.COM ", "Str0ng!Pass", "Nguyễn Văn A", "+84 912 345 678", "1 Main St"));
+
+    User saved = savedUser();
+    assertThat(saved.getEmail()).isEqualTo("new.user@example.com");
+    assertThat(saved.getFullName()).isEqualTo("Nguyễn Văn A");
+    assertThat(saved.getPhone()).isEqualTo("+84 912 345 678");
+    assertThat(saved.getAddress()).isEqualTo("1 Main St");
+    verify(userRepository).existsByEmail("new.user@example.com");
+    verify(otpEmailService).sendOtpEmailAsync("new.user@example.com");
+  }
+
+  @Test
+  void loginAuthenticatesWithTheNormalizedEmail() {
+    givenAuthenticationSucceedsFor(user("user@example.com", EUserStatus.ACTIVE));
+
+    login(" User@Example.COM ", "Str0ng!Pass");
+
+    ArgumentCaptor<Authentication> captor = ArgumentCaptor.forClass(Authentication.class);
+    verify(authenticationManager).authenticate(captor.capture());
+    assertThat(captor.getValue().getName()).isEqualTo("user@example.com");
+  }
+
+  @Test
+  void otpFlowsUseTheNormalizedEmail() {
+    authService.resendOtp(" User@Example.COM ");
+    authService.forgotPassword("USER@example.com");
+    catchThrowable(() -> authService.activeAccount(new ActiveAccountRequestDto("User@Example.com", "123456")));
+    catchThrowable(() -> authService.resetPassword(
+        new ResetPasswordRequestDto("User@Example.com", "123456", "NewStr0ng!Pass")));
+
+    verify(userRepository, times(4)).findByEmail("user@example.com");
+    verify(otpFunction, times(2)).validateOtp("user@example.com", "123456");
+  }
+
+  @Test
+  void perEmailThrottleKeyIsAHashNotTheAddress() {
+    authService.forgotPassword("user@example.com");
+    authService.forgotPassword("USER@Example.com");
+
+    ArgumentCaptor<String> ids = ArgumentCaptor.forClass(String.class);
+    verify(rateLimitManagerService, times(2)).checkRateLimitAndThrow(eq(ERateLimitEndpoint.AUTH), ids.capture());
+    assertThat(ids.getAllValues().get(0))
+        .startsWith("email:")
+        .doesNotContain("user@example.com")
+        .isEqualTo(ids.getAllValues().get(1));
   }
 }

@@ -83,4 +83,12 @@ class ApplicationConfigTest {
 
     assertThat(authenticate("active@example.com", PASSWORD).getPrincipal()).isSameAs(user);
   }
+
+  @Test
+  void looksUsersUpByTheNormalizedEmail() {
+    user("user@example.com", EUserStatus.ACTIVE);
+
+    assertThat(config.userDetailsService().loadUserByUsername("  User@Example.COM ").getUsername())
+        .isEqualTo("user@example.com");
+  }
 }

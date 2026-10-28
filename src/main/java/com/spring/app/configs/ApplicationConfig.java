@@ -19,6 +19,7 @@ import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.UserNotActiveException;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
+import com.spring.app.modules.auth.utils.EmailNormalizer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -47,7 +48,7 @@ public class ApplicationConfig {
    */
   @Bean
   UserDetailsService userDetailsService() {
-    return email -> userRepository.findByEmail(email)
+    return email -> userRepository.findByEmail(EmailNormalizer.normalize(email))
         .filter(user -> user.getStatus() != EUserStatus.DELETED)
         .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
   }

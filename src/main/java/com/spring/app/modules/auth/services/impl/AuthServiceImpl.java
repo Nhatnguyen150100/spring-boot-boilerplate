@@ -38,6 +38,7 @@ import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
+import com.spring.app.modules.auth.utils.EmailNormalizer;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.AuthCacheService;
@@ -86,13 +87,14 @@ public class AuthServiceImpl implements AuthServiceInterface {
    * Per-email throttle for sensitive auth actions (OTP send/verify, login).
    * Complements the per-IP limit in {@link com.spring.app.filter.RateLimitFilter}
    * so a single account cannot be brute-forced / email-bombed from many IPs.
+   * The identifier is a hash: it ends up in Redis keys and rate-limit log lines.
    */
   private void throttleByEmail(String email) {
     if (email == null || email.isBlank()) {
       return;
     }
     try {
-      rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, "email:" + email.toLowerCase());
+      rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, "email:" + EmailNormalizer.fingerprint(email));
     } catch (RateLimitExceededException e) {
       monitoringService.recordRateLimitRejection("auth_email");
       throw e;
@@ -119,7 +121,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> register(RegisterRequestDto dto) {
     Timer.Sample timer = monitoringService.startRegistrationTimer();
     try {
-      String emailRegister = dto.email();
+      String emailRegister = EmailNormalizer.normalize(dto.email());
       throttleByEmail(emailRegister);
 
       // uk_users_email covers every row, DELETED included, so any existing row
@@ -130,8 +132,14 @@ public class AuthServiceImpl implements AuthServiceInterface {
       }
 
       boolean skipVerification = isEmailVerificationSkipped();
-      User newUser = User.builder().email(emailRegister).password(passwordEncoder.encode(dto.password()))
-          .status(skipVerification ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
+      User newUser = User.builder()
+          .email(emailRegister)
+          .password(passwordEncoder.encode(dto.password()))
+          .fullName(dto.fullName())
+          .phone(dto.phone())
+          .address(dto.address())
+          .status(skipVerification ? EUserStatus.ACTIVE : EUserStatus.PENDING)
+          .build();
       try {
         userRepository.saveAndFlush(newUser);
       } catch (DataIntegrityViolationException e) {
@@ -153,7 +161,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  public ResponseEntity<?> resendOtp(String email) {
+  public ResponseEntity<?> resendOtp(String rawEmail) {
+    String email = EmailNormalizer.normalize(rawEmail);
     throttleByEmail(email);
     // Same answer whether the account is unknown, ACTIVE or PENDING.
     userRepository.findByEmail(email)
@@ -165,7 +174,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
-    String email = dto.email();
+    String email = EmailNormalizer.normalize(dto.email());
     throttleByEmail(email);
 
     // Unknown e-mail, wrong status and wrong OTP all get the same 400.
@@ -190,8 +199,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> login(LoginRequestDto dto) {
     Timer.Sample timer = monitoringService.startLoginTimer();
     try {
-      throttleByEmail(dto.email());
-      User user = authenticate(dto.email(), dto.password());
+      String email = EmailNormalizer.normalize(dto.email());
+      throttleByEmail(email);
+      User user = authenticate(email, dto.password());
 
       String accessToken = jwtService.generateToken(user);
       String refreshToken = createAndStoreRefreshToken(user);
@@ -259,7 +269,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   }
 
   @Override
-  public ResponseEntity<?> forgotPassword(String email) {
+  public ResponseEntity<?> forgotPassword(String rawEmail) {
+    String email = EmailNormalizer.normalize(rawEmail);
     throttleByEmail(email);
     userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.ACTIVE)
@@ -270,7 +281,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
-    String email = dto.email();
+    String email = EmailNormalizer.normalize(dto.email());
     throttleByEmail(email);
 
     // Unknown e-mail, non-ACTIVE account and wrong OTP all get the same 400.

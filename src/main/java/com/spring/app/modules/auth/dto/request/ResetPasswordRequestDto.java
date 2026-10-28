@@ -1,5 +1,6 @@
 package com.spring.app.modules.auth.dto.request;
 
+import com.spring.app.common.validation.annotations.MaxUtf8Bytes;
 import com.spring.app.common.validation.annotations.StrongPassword;
 import com.spring.app.common.validation.annotations.ValidEmail;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -20,6 +21,7 @@ public record ResetPasswordRequestDto(
 
   @NotBlank(message = "New password is required")
   @StrongPassword
+  @MaxUtf8Bytes(value = 72, message = "Password must be at most 72 bytes")
   @Schema(description = "New password", example = "NewStrongP@ss123")
   String newPassword
 ) {}
