@@ -7,7 +7,9 @@ Read the checklist before deploying.
 ## Deployment checklist
 
 1. **Expect every user to log in again** (see [Sessions and tokens](#sessions-and-tokens)).
-2. **Set `TRUSTED_PROXIES`** to the exact IP(s) of your load balancer / reverse proxy.
+2. **Set `TRUSTED_PROXIES`** to the exact IP(s) of your load balancer / reverse proxy
+   (`172.28.0.1` for `docker-compose.prod.yml` behind a proxy on the host; see
+   [`TRUSTED_PROXIES`](#trusted_proxies)).
 3. **Check `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS`**: both are now validated at startup.
 4. **Add the new environment variables** (or accept their defaults) and remove the
    obsolete ones: see [Environment variables](#environment-variables).
@@ -31,19 +33,33 @@ Read the checklist before deploying.
 - **OTPs issued before the deploy are invalid**: the Redis key format changed
   (`otp:<sha256(lower(trim(email)))>`). Users press "resend".
 - An OTP is now discarded after **5 wrong guesses** (`AUTH_OTP_MAX_ATTEMPTS`);
-  the user has to request a new one.
-- **Logout signs out everywhere**: it blacklists the presented access token and
-  revokes all of the user's refresh tokens.
+  the user has to request a new one. Sending a new OTP (register, resend-otp,
+  forgot-password) resets the wrong-guess count for it.
+- **Logout signs out everywhere**: it blacklists the presented access token,
+  revokes all of the user's refresh tokens and ends the access tokens of the
+  user's other devices (they are refused from the next request on).
 - **Password reset ends every live session**: refresh tokens are revoked and
   all access tokens issued before the reset are refused.
 - Refresh rotates the token: the presented refresh token is revoked and a new
   pair is returned. Reusing an old refresh token gets 401.
 - The JWT filter now loads the user on every request: an account that becomes
   INACTIVE or DELETED loses access on its next request.
+- **The `email` and `status` JWT claims were removed** (the e-mail is the
+  `sub` claim; the status is read from the database). An SPA that decoded
+  them from the token must call `GET /api/v1/users/me` instead.
 - `JWT_SECRET_KEY` must be Base64 and decode to at least 256 bits; startup
   fails otherwise.
 - Consider shortening `JWT_EXPIRATION` (default 24h) to about 15 minutes now
-  that refresh rotation and revocation work.
+  that refresh rotation and revocation work. Caveat: `/refresh-token` is in
+  the AUTH rate-limit bucket (10 per minute, 100 per hour per client IP).
+  With 15-minute tokens every active user refreshes 4 times an hour, so about
+  25 users behind one NAT or corporate proxy exhaust the hourly quota. Raise
+  `application.rate-limit.auth.requests-per-hour` (and `requests-per-minute`)
+  accordingly, or keep a longer access-token lifetime.
+- **PENDING accounts are never expired** (owner decision): a registration that
+  is never activated keeps its e-mail address reserved, so someone can
+  register an address they do not own and block its owner until activation.
+  No cleanup job exists; add one if this matters for you.
 
 ## API behaviour changes
 
@@ -73,7 +89,9 @@ Read the checklist before deploying.
   `/api/v1/auth/**` and `/api/v1/files/**` is limited to 60 / 600 / 6000 per
   minute / hour / day per client IP. Those requests used to count against
   GLOBAL (100 per minute). Each request now counts in exactly one bucket.
-- 429 responses carry `Retry-After: 60`.
+- Every 429 carries `Retry-After: 60`, including login lockout and the
+  per-e-mail OTP throttle, and CORS exposes the header so browser clients can
+  read it.
 - Failed logins are throttled per e-mail + client IP (5 per 15 minutes by
   default; `AUTH_LOGIN_MAX_FAILURES`, `AUTH_LOGIN_FAILURE_WINDOW`).
   Successful logins are no longer counted, so a stranger can no longer lock
@@ -101,7 +119,8 @@ Read the checklist before deploying.
   `#error=<code>` (e.g. `email_not_verified`, `email_domain_not_allowed`,
   `account_not_active`, `authentication_failed`). The SPA must read and then
   clear the fragment.
-- `FRONTEND_URL` must be an absolute `http(s)://` URL; startup fails otherwise.
+- `FRONTEND_URL` must be an absolute `http(s)://` URL without a query or
+  fragment; startup fails otherwise.
 - Google must report the e-mail as verified; existing non-ACTIVE accounts are refused.
 - The authorization request lives in the in-memory HTTP session: with more
   than one instance, configure **sticky sessions** on the load balancer.
@@ -163,6 +182,19 @@ Read the checklist before deploying.
 
   Then move legacy flat upload files into `<userId>/` folders (see above).
   The volume names are fixed, so two checkouts on the same host share them.
+- `docker-compose.prod.yml` pins its network to `172.28.0.0/16` (gateway
+  `172.28.0.1`), so a reverse proxy on the host has a known address to trust
+  (see [`TRUSTED_PROXIES`](#trusted_proxies)). If that subnet clashes with an
+  existing network on the host, change it in the file and in `TRUSTED_PROXIES`.
+- **Prod Redis no longer evicts keys**: `maxmemory-policy` changed from
+  `allkeys-lru` to `noeviction`. The same Redis holds the access-token
+  blacklist, the "tokens not before" markers and the login/OTP failure
+  counters; evicting them would revive revoked tokens and reset lockouts.
+  Cache entries all have TTLs. At the 512MB limit Redis now rejects writes
+  (cache writes are logged and skipped; logins and OTP sends fail) instead of
+  dropping keys, so monitor its memory.
+- Both Compose files set `stop_grace_period: 70s` on the app (see
+  [Shutdown](#shutdown)).
 - `docker-compose.prod.yml` sets `REDIS_SSL_ENABLED=false` for its bundled
   plain-TCP Redis. Outside Compose, the prod profile defaults Redis TLS to on
   (`REDIS_SSL_ENABLED=true`); set it to `false` for a plain-TCP Redis.
@@ -205,6 +237,12 @@ headers are ignored: every client shares the proxy's IP for rate limiting and
 login throttling, and HTTPS requests look like HTTP to the app. The prod
 profile logs a WARN at startup in that case.
 
+With `docker-compose.prod.yml` and a reverse proxy on the host (publishing to
+the app's `127.0.0.1:8080` binding), Tomcat does not see the proxy's address:
+Docker forwards the connection, so the peer is the bridge gateway. The
+network is pinned for this reason; set `TRUSTED_PROXIES=172.28.0.1` and make
+the proxy send `X-Forwarded-For` and `X-Forwarded-Proto`.
+
 ## Development
 
 - The dev profile **no longer auto-activates new accounts**. Set
@@ -226,8 +264,9 @@ if an SMTP server hangs, up to 30s more when the pool is destroyed). Allow at
 least **70s** (90s for the worst case):
 
 - Kubernetes: `terminationGracePeriodSeconds: 70` or more.
-- Docker Compose: the default stop timeout is 10s; use `docker compose stop -t 70`
-  or set `stop_grace_period: 70s` on the app service.
+- Docker Compose: the default stop timeout is 10s; both Compose files now set
+  `stop_grace_period: 70s` on the app service (with your own Compose file, set
+  it or use `docker compose stop -t 70`).
 
 Mails still queued after the drain timeout are lost; users can request a new OTP.
 
@@ -250,6 +289,14 @@ Mails still queued after the drain timeout are lost; users can request a new OTP
 - Migration `V3__demote_manager_role.sql` turns every `MANAGER` user into
   `USER` (the role was removed; it was never checked anywhere).
 - The user-profile cache moved to keys prefixed `v2:` with a 10-minute TTL.
-  Old cache entries are ignored and expire on their own.
+  Old cache entries are ignored and expire on their own. It is cache-aside: a
+  profile read racing an update can put the old profile back after the
+  eviction, and it then lives until `CACHE_USERS_TTL` expires.
+- Collation comes from the MySQL server default; the Compose files start
+  MySQL with `utf8mb4_unicode_ci`. E-mails are now stored lower-cased and
+  trimmed, so lookups rely on a case-insensitive collation only for legacy
+  mixed-case rows. On a server with a case-sensitive default collation,
+  lower-case those rows (`UPDATE users SET email = LOWER(TRIM(email))`, after
+  checking for duplicates).
 - Expired and revoked refresh tokens are deleted nightly at 02:00 by exactly
   one instance (Redis lock `lock:token-cleanup`).

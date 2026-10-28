@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Test**: `mvn test` - Unit and slice tests; hermetic (H2, no MySQL/Redis/SMTP/Docker needed)
 - **Integration tests**: `mvn -Pintegration verify` - `*IT` classes in `src/test/java/com/spring/app/integration` via failsafe against Testcontainers MySQL 8.0 + Redis 7 (Docker required; Ryuk removes the containers). Never run by `mvn test`.
 - **Package**: `mvn clean package` - Create deployable JAR file
-- **Env catalogue check**: `scripts/check-env-example.sh [env-file]` - prints nothing and exits 0 when `.env.example` lists exactly the `${VAR}` names used by `src/main/resources/application*.yml` and `docker-compose*.yml`; run it after adding or removing any `${VAR}`
+- **Env catalogue check**: `scripts/check-env-example.sh [env-file]` - prints nothing and exits 0 when `.env.example` lists exactly the `${VAR}` names used by `src/main/resources/application*.yml` and `docker-compose*.yml`; otherwise lists the missing / unused names and exits 1 (an env file with no `NAME=` lines lists every used name); run it after adding or removing any `${VAR}`
 
 ### Docker
 - `docker compose up --build` - MySQL + Redis + app with the **prod** profile. Needs a `.env` with the prod variables; `MYSQL_ROOT_PASSWORD`, `DB_USERNAME`, `DB_PASSWORD`, `REDIS_PASSWORD` are mandatory (`${VAR:?}`). MySQL/Redis are published on 127.0.0.1 only.
@@ -18,7 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   `MYSQL_ROOT_PASSWORD=dev-root DB_USERNAME=springapp DB_PASSWORD=dev-pass REDIS_PASSWORD=dev-redis docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build`.
   The dev overlay also sets `AUTH_SKIP_EMAIL_VERIFICATION=true`.
 - Add `-f docker-compose.debug.yml` (only together with the dev overlay) - JDWP on `127.0.0.1:5005`
-- `docker compose -f docker-compose.prod.yml up -d` - production stack (`.env` mandatory, every port bound to 127.0.0.1, app memory limit 2G)
+- `docker compose -f docker-compose.prod.yml up -d` - production stack (`.env` mandatory, every port bound to 127.0.0.1, app memory limit 2G). Its network is pinned to `172.28.0.0/16` (gateway `172.28.0.1`): a reverse proxy on the host reaches the app through the gateway, so set `TRUSTED_PROXIES=172.28.0.1`. Its Redis runs `maxmemory-policy noeviction` (security keys must never be evicted; cache entries expire by TTL).
+- Both the base and the prod file give the app `stop_grace_period: 70s` (graceful shutdown + e-mail drain need about 60s; Docker's default is 10s).
 - Image: `eclipse-temurin:21-jre-alpine`, runs as non-root UID/GID 10001, `SPRING_PROFILES_ACTIVE=prod` by default, `-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` (give the container a memory limit). Uploads and logs live in named volumes (`springapp_uploads_data` / `springapp_logs_data`; `springapp_uploads_prod_data` / `springapp_logs_prod_data` in prod). The names are fixed, so two checkouts on one host share them. Healthchecks use BusyBox `wget` (the image has no `curl`).
 
 ### Development Environment
@@ -82,7 +83,8 @@ binding, because it is the shared parent prefix for all the others; turning
 on strict binding there would make every child class's keys look "unknown"
 to it and break startup entirely. A typo under those specific keys is still
 silently ignored (their values are still validated: `frontend-url` must be an
-absolute http(s) URL, `cors.allowed-origins` non-empty and without `*`).
+absolute http(s) URL without query or fragment, `cors.allowed-origins`
+non-empty and without `*`).
 
 ## Architecture Overview
 
@@ -132,14 +134,19 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
   claim: only access tokens are accepted as `Authorization: Bearer`, and only
   refresh tokens at `/api/v1/auth/refresh-token`. Refresh tokens are stored as
   SHA-256 hashes in `refresh_tokens`; a refresh rotates the token (conditional
-  revoke, so of two concurrent refreshes only one wins). Logout blacklists the
-  presented access token in Redis until it expires and revokes all of the
-  user's refresh tokens. A password reset revokes refresh tokens and ends all
-  live access tokens via a per-user "not before" marker in Redis.
+  revoke, so of two concurrent refreshes only one wins). Logout signs out
+  everywhere: it blacklists the presented access token in Redis until it
+  expires, revokes all of the user's refresh tokens and ends the user's other
+  access tokens via a per-user "not before" marker in Redis
+  (`TokenRevocationService`). A password reset revokes refresh tokens and sets
+  the same marker. Tokens carry `id`, `role`, `token_type`, `jti` and the
+  e-mail as subject (no `email` / `status` claims).
 - `JwtAuthenticatorFilter` never rejects a request itself: it authenticates
   when a usable bearer access token is present, loading the user from the
   DB on every request (non-ACTIVE or deleted users stay anonymous). The
-  blacklist and revocation checks fail closed when Redis is down.
+  blacklist and revocation checks fail closed when Redis is down; a database
+  failure during the user lookup also leaves the request anonymous (WARN,
+  exception type only).
 - **Public endpoints** are listed explicitly in `WhitelistUrlConstant`, read
   only by `SecurityConfig` (the JWT filter keeps no copy). Everything else
   needs a valid access token.
@@ -151,9 +158,14 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
 - **E-mail verification**: new accounts are PENDING until activated with a
   6-digit OTP (SecureRandom, 3-minute TTL, stored in Redis under
   `otp:<sha256(email)>`). An OTP is discarded after 5 wrong guesses
-  (`AUTH_OTP_MAX_ATTEMPTS`). Skipping verification is an explicit opt-in
+  (`AUTH_OTP_MAX_ATTEMPTS`); sending a new OTP (register, resend-otp,
+  forgot-password) clears that purpose's wrong-guess counter. Skipping
+  verification is an explicit opt-in
   (`application.auth.skip-email-verification`, default `false`) and is
   honoured only while the `dev` profile is also active.
+- **PENDING accounts are never expired** (owner decision): an unactivated
+  registration keeps its e-mail address reserved until someone activates it,
+  so a stranger can squat an address they do not own. No cleanup job exists.
 - **OAuth2 (Google, OIDC)**: requires `email_verified`, optionally restricted
   by `application.oauth2-allowed-email-domains`; existing non-ACTIVE accounts
   are refused. On success or failure it redirects to
@@ -171,8 +183,9 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
   - API every other `/api/**`: 60 / 600 / 6000
   - GLOBAL everything else (actuator, Swagger): 100 / 1000 / 10000
 
-  Exceeding a limit returns 429 with `Retry-After: 60`. A limiter error fails
-  open. The OTP-sending endpoints (register, resend-otp, forgot-password) are
+  Every 429 (bucket limit, login lockout, per-e-mail OTP throttle) carries
+  `Retry-After: 60`, which CORS exposes to browser clients. A limiter error
+  fails open. The OTP-sending endpoints (register, resend-otp, forgot-password) are
   additionally limited per e-mail with the AUTH quotas, and failed logins are
   throttled per e-mail + client IP (`AUTH_LOGIN_MAX_FAILURES` within
   `AUTH_LOGIN_FAILURE_WINDOW`, default 5 per 15m; successes are not counted).
@@ -181,7 +194,9 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
   CIDR), the single list used by `ClientKeys` (rate limiting, login throttling)
   and by Tomcat's `RemoteIpValve` (prod, `forward-headers-strategy=native`,
   configured in `ProxyHeadersConfig`). When it is empty, forwarded headers
-  including `X-Forwarded-Proto` are ignored.
+  including `X-Forwarded-Proto` are ignored. With the prod Compose stack and a
+  reverse proxy on the host, Tomcat's peer is the bridge gateway
+  (`172.28.0.1`), so that is the address to list.
 - **CORS**: one `CorsConfigurationSource` (`CorsConfig`, `application.cors.*`),
   credentials not allowed.
 - **CSRF**: disabled. The API is stateless and authenticates with bearer
@@ -194,7 +209,9 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
   `application.cache.users-ttl` (`CACHE_USERS_TTL`, default 10m), keys
   prefixed `v2:` (bump the prefix when the DTO shape changes). It is evicted
   on profile changes. Cache errors are logged and fall back to the database
-  (`LoggingCacheErrorHandler`).
+  (`LoggingCacheErrorHandler`). It is plain cache-aside: a read that loaded
+  the old profile just before a concurrent update can put it back after the
+  eviction, and that stale entry lives until `CACHE_USERS_TTL` expires.
 - Redis also holds OTPs and OTP guess counters, login-failure counters, the
   access-token blacklist, the per-user "tokens not before" markers,
   rate-limit counters and the token-cleanup lock. There are **no HTTP
@@ -226,6 +243,10 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
 
 ### Data Layer
 - JPA/Hibernate on MySQL 8; Flyway migrations; `ddl-auto=validate`; `open-in-view` off.
+- Collation comes from the MySQL server default (the Compose files start MySQL
+  with `utf8mb4_unicode_ci`). New e-mails are stored normalised (trimmed,
+  lower-case), so lookups only rely on the case-insensitive collation for
+  legacy mixed-case rows.
 - HikariCP (max 20 by default). Hibernate JDBC batching is configured
   (`batch_size` 50, ordered inserts/updates); there are no bulk-processing jobs.
 - Auditing: `BaseAuditingEntity` fills `created_at/updated_at` and

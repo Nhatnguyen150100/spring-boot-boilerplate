@@ -25,8 +25,9 @@ limiting, per-user file uploads, Flyway-managed MySQL, and Prometheus metrics.
 ## Features
 
 - **Authentication**: JWT access + refresh tokens (typed, refresh tokens stored
-  hashed and rotated on every refresh; logout blacklists the access token and
-  revokes all refresh tokens).
+  hashed and rotated on every refresh; logout signs out everywhere: it
+  blacklists the access token, revokes all refresh tokens and ends the
+  account's other access tokens).
 - **E-mail verification**: 6-digit OTP sent by e-mail; accounts stay PENDING until activated.
 - **Password reset** by e-mail OTP; a reset ends every live session of the account.
 - **Google sign-in** (OAuth2/OIDC), verified e-mails only, optional domain allow-list;
@@ -116,7 +117,7 @@ mvn spring-boot:run
 
 ```bash
 curl http://localhost:8080/actuator/health
-# Swagger UI (not in prod): http://localhost:8080/swagger-ui.html
+# Swagger UI (off in prod unless SWAGGER_ENABLED=true): http://localhost:8080/swagger-ui.html
 ```
 
 ## Running with Docker
@@ -132,6 +133,22 @@ The base file has no credential defaults: `MYSQL_ROOT_PASSWORD`,
 `DB_USERNAME` (not `root`), `DB_PASSWORD` and `REDIS_PASSWORD` must come from
 the shell or from `.env` (the dev overlay cannot supply them). MySQL and Redis
 are published on 127.0.0.1 only.
+
+`docker-compose.prod.yml` notes:
+
+- **Reverse proxy on the host**: the app is published on `127.0.0.1:8080`,
+  so the proxy's requests reach Tomcat through the Docker bridge gateway.
+  The network is pinned to `172.28.0.0/16` with gateway `172.28.0.1`; set
+  `TRUSTED_PROXIES=172.28.0.1` in `.env` and have the proxy send
+  `X-Forwarded-For` and `X-Forwarded-Proto`. Without it every client shares
+  one address for rate limiting and login lockout.
+- **Redis** runs with `maxmemory 512mb` and `maxmemory-policy noeviction`. It
+  holds security state (token blacklist, "tokens not before" markers, login
+  and OTP failure counters) that must never be evicted; cache entries expire
+  by TTL. At the limit Redis refuses writes instead of dropping keys, so
+  watch its memory.
+- Both Compose files give the app `stop_grace_period: 70s` (see the runtime
+  model below).
 
 The image is `eclipse-temurin:21-jre-alpine`, runs as non-root UID 10001, and
 sizes the heap to 75% of the container memory limit, so give the container a
@@ -168,7 +185,7 @@ Errors use the same envelope. 5xx responses always carry the message
 | `POST` | `/api/v1/auth/activate` | Activate the account with the OTP | public |
 | `POST` | `/api/v1/auth/login` | Returns access + refresh token | public |
 | `POST` | `/api/v1/auth/refresh-token` | Exchange a refresh token for a new pair | refresh token in body |
-| `DELETE` | `/api/v1/auth/logout` | Blacklist the access token, revoke all refresh tokens | Bearer access token |
+| `DELETE` | `/api/v1/auth/logout` | Sign out everywhere: blacklist the access token, revoke all refresh tokens, end the other access tokens | Bearer access token |
 | `POST` | `/api/v1/auth/forgot-password` | Send a password-reset OTP | public |
 | `POST` | `/api/v1/auth/reset-password` | Reset the password with the OTP | public |
 | `GET` | `/api/v1/auth/oauth2/authorization/google` | Start Google sign-in (browser redirect) | public |
@@ -176,7 +193,8 @@ Errors use the same envelope. 5xx responses always carry the message
 After Google sign-in the browser is redirected to
 `FRONTEND_URL` + `AUTH_OAUTH2_REDIRECT_PATH` (default `/oauth2/callback`)
 with `#access_token=...&refresh_token=...&token_type=Bearer` or
-`#error=<code>` in the URL fragment.
+`#error=<code>` in the URL fragment. `FRONTEND_URL` must be an absolute
+`http(s)://` URL without a query or fragment (checked at startup).
 
 ### User: `/api/v1/users`
 
@@ -206,7 +224,9 @@ A file of another user, or a missing file, is a 404.
 - **Accounts**: only ACTIVE users can log in or use a token. Unknown e-mail
   and wrong password get the same login error; OTP, resend and reset
   responses do not reveal whether an e-mail is registered. An OTP expires
-  after 3 minutes or 5 wrong guesses.
+  after 3 minutes or 5 wrong guesses; a newly sent OTP starts with a fresh
+  guess count. Unactivated (PENDING) accounts are never expired, so they keep
+  their e-mail address reserved.
 - **Passwords**: BCrypt. `@StrongPassword` policy on register/reset (8+
   chars, upper, lower, digit, special), max 72 bytes.
 - **Roles**: `USER` (default), `ADMIN`. Every actuator endpoint except
@@ -217,7 +237,8 @@ A file of another user, or a missing file, is a 404.
 - **Headers**: Spring Security defaults (`X-Content-Type-Options`,
   `X-Frame-Options: DENY`, cache control; HSTS on HTTPS requests).
 - **Rate limits** (per client IP, per minute / hour / day; 429 with
-  `Retry-After: 60` when exceeded). Each request counts in exactly one bucket:
+  `Retry-After: 60` when exceeded, as for every other 429; CORS exposes the
+  header). Each request counts in exactly one bucket:
 
   | Bucket | Paths | Limits |
   |---|---|---|
@@ -231,7 +252,8 @@ A file of another user, or a missing file, is a 404.
 - **Behind a reverse proxy / load balancer**: set `TRUSTED_PROXIES` to its
   exact IP(s). Otherwise `X-Forwarded-For` and `X-Forwarded-Proto` are
   ignored, every client shares the proxy's IP for rate limiting and login
-  throttling, and HTTPS requests look like HTTP.
+  throttling, and HTTPS requests look like HTTP. With the prod Compose stack
+  behind a host proxy, that IP is the bridge gateway `172.28.0.1`.
 - **Google sign-in** keeps its OAuth2 state in the in-memory HTTP session.
   With more than one instance, enable sticky sessions on the load balancer.
 
@@ -244,7 +266,8 @@ A file of another user, or a missing file, is a 404.
   When it is saturated, new mails are logged and dropped instead of blocking
   requests; the user requests a new OTP.
 - Shutdown is graceful: in-flight requests get up to 30s, then queued e-mails
-  up to 30s more. Allow about 70s of grace in your orchestrator.
+  up to 30s more. Allow about 70s of grace in your orchestrator (the Compose
+  files set `stop_grace_period: 70s`).
 - A nightly job (02:00) deletes expired/revoked refresh tokens. A Redis lock
   ensures only one instance runs it.
 
