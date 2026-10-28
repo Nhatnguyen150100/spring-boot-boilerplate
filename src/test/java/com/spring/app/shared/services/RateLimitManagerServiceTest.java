@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,15 +15,19 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.slf4j.LoggerFactory;
 
 import com.spring.app.configs.properties.RateLimitProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.exceptions.RateLimitExceededException;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 
-@ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
+@ExtendWith(MockitoExtension.class)
 class RateLimitManagerServiceTest {
 
   @Mock
@@ -31,9 +36,26 @@ class RateLimitManagerServiceTest {
   private final RateLimitProperties properties = new RateLimitProperties();
   private RateLimitManagerService service;
 
+  private final Logger logger = (Logger) LoggerFactory.getLogger(RateLimitManagerService.class);
+  private final ListAppender<ILoggingEvent> logs = new ListAppender<>();
+  private Level originalLevel;
+
   @BeforeEach
   void setUp() {
     service = new RateLimitManagerService(redisService, properties);
+    // capture instead of printing, at DEBUG whatever the global logging config is
+    originalLevel = logger.getLevel();
+    logger.setLevel(Level.DEBUG);
+    logger.setAdditive(false);
+    logs.start();
+    logger.addAppender(logs);
+  }
+
+  @AfterEach
+  void tearDown() {
+    logger.detachAppender(logs);
+    logger.setAdditive(true);
+    logger.setLevel(originalLevel);
   }
 
   @ParameterizedTest(name = "{0}")
@@ -74,15 +96,22 @@ class RateLimitManagerServiceTest {
   }
 
   @Test
-  void exceededLimitThrowsAndLogsOnlyTheMaskedEmail(CapturedOutput output) {
+  void exceededLimitThrowsAndLogsOnlyTheMaskedEmailAtDebug() {
     properties.getAuth().setRequestsPerMinute(1);
     when(redisService.incrementRateLimit("rate_limit:AUTH:minute:email:john@example.com", 60L)).thenReturn(2L);
 
     assertThatThrownBy(() -> service.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, "email:john@example.com"))
         .isInstanceOf(RateLimitExceededException.class);
 
-    assertThat(output.getAll())
-        .contains("email:j***@example.com")
-        .doesNotContain("john@example.com");
+    // The 429 itself is logged at WARN by GlobalExceptionHandler; one WARN per rejection is enough.
+    assertThat(logs.list)
+        .filteredOn(event -> event.getFormattedMessage().startsWith("Rate limit exceeded"))
+        .singleElement()
+        .satisfies(event -> {
+          assertThat(event.getLevel()).isEqualTo(Level.DEBUG);
+          assertThat(event.getFormattedMessage())
+              .contains("email:j***@example.com")
+              .doesNotContain("john@example.com");
+        });
   }
 }

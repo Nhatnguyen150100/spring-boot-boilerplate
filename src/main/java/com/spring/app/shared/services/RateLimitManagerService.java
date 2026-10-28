@@ -161,7 +161,8 @@ public class RateLimitManagerService {
       long count = redisService.incrementRateLimit(key, windowSeconds);
 
       if (count > maxRequests) {
-        log.warn("Rate limit exceeded for key: {} (count: {}, max: {})", maskIdentifier(key), count, maxRequests);
+        // DEBUG: the resulting 429 is already logged at WARN by GlobalExceptionHandler.
+        log.debug("Rate limit exceeded for key: {} (count: {}, max: {})", maskIdentifier(key), count, maxRequests);
         return false;
       }
       return true;
