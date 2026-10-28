@@ -91,4 +91,21 @@ class ApplicationConfigTest {
     assertThat(config.userDetailsService().loadUserByUsername("  User@Example.COM ").getUsername())
         .isEqualTo("user@example.com");
   }
+
+  /**
+   * The lookup itself never throws UserNotActiveException (the status check is a
+   * post-authentication check), so Spring Security cannot wrap it in an
+   * InternalAuthenticationServiceException: GlobalExceptionHandler needs no
+   * wrapped-cause branch for it.
+   */
+  @Test
+  void lookupLoadsEveryNonDeletedStatusSoNotActiveIsNeverWrapped() {
+    user("pending@example.com", EUserStatus.PENDING);
+    user("inactive@example.com", EUserStatus.INACTIVE);
+
+    assertThat(config.userDetailsService().loadUserByUsername("pending@example.com")).isNotNull();
+    assertThat(config.userDetailsService().loadUserByUsername("inactive@example.com")).isNotNull();
+    assertThatThrownBy(() -> authenticate("pending@example.com", PASSWORD))
+        .isExactlyInstanceOf(UserNotActiveException.class);
+  }
 }

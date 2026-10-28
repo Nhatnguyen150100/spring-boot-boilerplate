@@ -116,19 +116,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   }
 
   /**
-   * Spring Security wraps whatever the user lookup threw. A wrapped
-   * {@link UserNotActiveException} is a client problem (403); anything else
-   * signals an infrastructure failure (e.g. the database is down), so it is a
+   * Spring Security wraps whatever the user lookup threw. The lookup only
+   * throws {@link UsernameNotFoundException} (mapped to 401 above), so what
+   * arrives here is an infrastructure failure (e.g. the database is down): a
    * 500 with the generic text, logged at ERROR with its cause. The message is
-   * never echoed. Must stay more specific than the
-   * {@link AuthenticationException} mapping below.
+   * never echoed. {@link UserNotActiveException} is thrown after the password
+   * check, outside the wrapping, and has its own handler. Must stay more
+   * specific than the {@link AuthenticationException} mapping below.
    */
   @ExceptionHandler(InternalAuthenticationServiceException.class)
   public ResponseEntity<BaseResponse<Void>> handleInternalAuthenticationService(
       InternalAuthenticationServiceException ex, HttpServletRequest request) {
-    if (ex.getCause() instanceof UserNotActiveException) {
-      return respond(HttpStatus.FORBIDDEN, ACCOUNT_NOT_ACTIVE, request, ex);
-    }
     return respond(HttpStatus.INTERNAL_SERVER_ERROR, GENERIC_SERVER_ERROR, request, ex);
   }
 

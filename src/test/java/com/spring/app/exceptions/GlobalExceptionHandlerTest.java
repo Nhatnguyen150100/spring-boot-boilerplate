@@ -77,7 +77,6 @@ class GlobalExceptionHandlerTest {
       conflict                 | 409 | Already exists
       rate-limit               | 429 | Too many requests from this client
       user-not-active          | 403 | Account is not active
-      internal-auth-not-active | 403 | Account is not active
       internal-auth            | 500 | Internal server error
       invalid-token            | 401 | Invalid or expired refresh token
       bad-credentials          | 401 | Invalid email or password
@@ -246,8 +245,6 @@ class GlobalExceptionHandlerTest {
       case "conflict" -> new ConflictException("Already exists");
       case "rate-limit" -> new RateLimitExceededException("Too many requests from this client");
       case "user-not-active" -> new UserNotActiveException("User with email a@b.c is not active");
-      case "internal-auth-not-active" ->
-        new InternalAuthenticationServiceException("wrapped", new UserNotActiveException("inactive"));
       case "internal-auth" -> new InternalAuthenticationServiceException("secret jdbc:mysql://db:3306 refused",
           new IllegalStateException("secret cause"));
       case "invalid-token" -> new InvalidTokenException("Invalid or expired refresh token");
