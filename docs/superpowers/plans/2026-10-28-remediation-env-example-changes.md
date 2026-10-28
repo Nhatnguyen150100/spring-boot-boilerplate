@@ -79,14 +79,16 @@ longer exists and `MailProperties` binds strictly). Concurrency is now capped by
 ## P3 Task 5 (e-mail verification skip is an explicit dev-only opt-in)
 
 Append (e.g. next to the other auth/app settings, or at the end under a
-`# --- Auth (application.auth) ---` header), commented out like other
-dev-only conveniences:
+`# --- Auth (application.auth) ---` header) the default line, followed by a
+commented-out `=true` example that a developer uncomments (in place of the
+default line) to opt in:
 
 ```
 # Dev only: new accounts start ACTIVE without the e-mail OTP. Honoured ONLY when
 # the dev profile is also active; ignored (with a WARN) in every other profile.
 # Leave false/unset outside local development.
 AUTH_SKIP_EMAIL_VERIFICATION=false
+# AUTH_SKIP_EMAIL_VERIFICATION=true
 ```
 
 Notes: default in `application.yml` is `false` (read by

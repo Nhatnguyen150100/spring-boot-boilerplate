@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -175,6 +176,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
         userRepository.saveAndFlush(newUser);
       } catch (DataIntegrityViolationException e) {
         // Lost a race with a concurrent registration of the same address.
+        // Types only: the driver's message quotes the duplicate e-mail.
+        log.warn("Registration rejected by a constraint: {} (root cause {})", e.getClass().getSimpleName(),
+            NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
         throw new ConflictException(REGISTRATION_REJECTED);
       }
 

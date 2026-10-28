@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.lang3.RandomStringUtils;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
@@ -96,7 +97,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     } catch (OAuth2AuthenticationException e) {
       throw e;
     } catch (RuntimeException e) {
-      log.error("OAuth2 user resolution failed", e);
+      // Types only at ERROR: messages can carry the e-mail or SQL details.
+      log.error("OAuth2 user resolution failed: {} (root cause {})",
+          e.getClass().getSimpleName(), NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
+      log.debug("OAuth2 user resolution failure", e);
       throw new OAuth2AuthenticationException(new OAuth2Error("server_error"), "OAuth2 login failed", e);
     }
   }

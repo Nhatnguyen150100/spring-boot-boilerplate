@@ -25,9 +25,13 @@ import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter;
+import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,6 +50,9 @@ import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 import com.spring.app.shared.services.JwtService;
+
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.RequestDispatcher;
 
 /**
  * The real SecurityConfig, JWT filter, rate-limit filter, exception handling
@@ -91,6 +98,7 @@ class SecurityRulesIntegrationTest {
   @Autowired private JwtServiceInterface jwtService;
   @Autowired private JwtProperties jwtProperties;
   @Autowired private PasswordEncoder passwordEncoder;
+  @Autowired private FilterChainProxy filterChainProxy;
 
   @MockitoBean private RedisServiceInterface redisService;
   @MockitoBean private LoginAttemptService loginAttemptService;
@@ -262,6 +270,45 @@ class SecurityRulesIntegrationTest {
     mockMvc.perform(get("/actuator/info")).andExpect(status().isOk());
     int health = mockMvc.perform(get("/actuator/health")).andReturn().getResponse().getStatus();
     assertThat(health).as("health may be 200 or 503 without Redis, but never 401/403").isNotIn(401, 403);
+  }
+
+  @Test
+  void anErrorDispatchToTheErrorPageIsNotTurnedInto401() throws Exception {
+    // What the container does after e.g. a 404 on an anonymous request: forward
+    // to /error with the ERROR dispatcher type. It must render, not 401.
+    int status = mockMvc.perform(get("/error").with(request -> {
+          request.setDispatcherType(DispatcherType.ERROR);
+          request.setAttribute(RequestDispatcher.ERROR_STATUS_CODE, 404);
+          request.setAttribute(RequestDispatcher.ERROR_REQUEST_URI, "/api/v1/no-such-endpoint");
+          return request;
+        }))
+        .andReturn().getResponse().getStatus();
+
+    assertThat(status).isNotEqualTo(401).isEqualTo(404);
+  }
+
+  // ---- OAuth2 ------------------------------------------------------------------------
+
+  @Test
+  void anonymousGoogleLoginRedirectsToTheProvider() throws Exception {
+    MvcResult result = mockMvc.perform(get("/api/v1/auth/oauth2/authorization/google"))
+        .andExpect(status().is3xxRedirection())
+        .andReturn();
+
+    assertThat(result.getResponse().getRedirectedUrl()).startsWith("https://accounts.google.com/o/oauth2/v2/auth?");
+  }
+
+  @Test
+  void googleAuthorizedClientsLiveInTheHandshakeSessionNotInMemory() {
+    OAuth2LoginAuthenticationFilter loginFilter = filterChainProxy.getFilterChains().stream()
+        .flatMap(chain -> chain.getFilters().stream())
+        .filter(OAuth2LoginAuthenticationFilter.class::isInstance)
+        .map(OAuth2LoginAuthenticationFilter.class::cast)
+        .findFirst()
+        .orElseThrow();
+
+    assertThat(ReflectionTestUtils.getField(loginFilter, "authorizedClientRepository"))
+        .isInstanceOf(HttpSessionOAuth2AuthorizedClientRepository.class);
   }
 
   // ---- RBAC ------------------------------------------------------------------------

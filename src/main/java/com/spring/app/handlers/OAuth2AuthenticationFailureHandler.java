@@ -11,6 +11,7 @@ import com.spring.app.shared.services.MonitoringService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,6 +37,12 @@ public class OAuth2AuthenticationFailureHandler implements AuthenticationFailure
     log.warn("OAuth2 login failed: {} ({})",
         OAuth2FrontendRedirect.safeErrorCode(errorCode), exception.getClass().getSimpleName());
     monitoringService.recordOAuth2Login(false);
+
+    // The session only carried the OAuth2 handshake state; the API is stateless.
+    HttpSession session = request.getSession(false);
+    if (session != null) {
+      session.invalidate();
+    }
     response.sendRedirect(frontendRedirect.failure(errorCode));
   }
 }

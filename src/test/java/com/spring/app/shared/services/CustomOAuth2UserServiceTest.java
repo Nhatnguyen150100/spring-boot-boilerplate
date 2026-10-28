@@ -18,6 +18,9 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -33,6 +36,7 @@ import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
 
+@ExtendWith(OutputCaptureExtension.class)
 class CustomOAuth2UserServiceTest {
 
   private final UserRepository userRepository = mock(UserRepository.class);
@@ -138,6 +142,22 @@ class CustomOAuth2UserServiceTest {
     assertThatThrownBy(() -> service.resolveUser(google("user@example.com", true)))
         .isInstanceOf(OAuth2AuthenticationException.class)
         .satisfies(thrown -> assertThat(errorCode(thrown)).isEqualTo("server_error"));
+  }
+
+  @Test
+  void unexpectedFailuresAreLoggedAtErrorByTypeOnly(CapturedOutput output) {
+    when(userRepository.findByEmail("user@example.com")).thenThrow(new DataAccessResourceFailureException(
+        "db down for user@example.com", new java.sql.SQLException("user@example.com")));
+
+    assertThatThrownBy(() -> service.resolveUser(google("user@example.com", true)))
+        .isInstanceOf(OAuth2AuthenticationException.class);
+
+    assertThat(output.getAll().lines().filter(line -> line.contains("ERROR")))
+        .isNotEmpty()
+        .allSatisfy(line -> assertThat(line)
+            .contains("DataAccessResourceFailureException")
+            .contains("SQLException")
+            .doesNotContain("user@example.com"));
   }
 
   @Test

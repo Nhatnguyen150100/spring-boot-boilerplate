@@ -42,6 +42,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -104,7 +106,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
  * fields by type, so adding a constructor dependency only needs a new field
  * here. Real collaborators (JWT, mapper, BCrypt, metrics) are {@code @Spy}.
  */
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({ MockitoExtension.class, OutputCaptureExtension.class })
 @MockitoSettings(strictness = Strictness.LENIENT)
 class AuthServiceImplTest {
 
@@ -309,6 +311,20 @@ class AuthServiceImplTest {
         .isInstanceOf(ConflictException.class)
         .hasMessage("This email cannot be registered");
     verifyNoInteractions(otpEmailService);
+  }
+
+  @Test
+  void aLostRegistrationRaceIsLoggedByExceptionTypeOnly(CapturedOutput output) {
+    when(userRepository.saveAndFlush(any(User.class))).thenThrow(new DataIntegrityViolationException(
+        "Duplicate entry 'race@example.com' for key 'uk_users_email'",
+        new java.sql.SQLIntegrityConstraintViolationException("Duplicate entry 'race@example.com'")));
+
+    catchThrowable(() -> authService.register(registerDto("race@example.com")));
+
+    assertThat(output.getAll())
+        .contains("DataIntegrityViolationException")
+        .contains("SQLIntegrityConstraintViolationException")
+        .doesNotContain("race@example.com");
   }
 
   @Test

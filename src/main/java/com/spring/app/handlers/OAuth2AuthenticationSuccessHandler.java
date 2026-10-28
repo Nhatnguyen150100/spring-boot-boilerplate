@@ -3,6 +3,7 @@ package com.spring.app.handlers;
 import java.io.IOException;
 
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -59,7 +60,10 @@ public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccess
       monitoringService.recordOAuth2Login(false);
       target = frontendRedirect.failure("account_not_active");
     } catch (RuntimeException e) {
-      log.error("Could not issue tokens after an OAuth2 login", e);
+      // Types only at ERROR: messages can carry the e-mail or SQL details.
+      log.error("Could not issue tokens after an OAuth2 login: {} (root cause {})",
+          e.getClass().getSimpleName(), NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
+      log.debug("OAuth2 token issuance failure", e);
       monitoringService.recordOAuth2Login(false);
       target = frontendRedirect.failure("server_error");
     }

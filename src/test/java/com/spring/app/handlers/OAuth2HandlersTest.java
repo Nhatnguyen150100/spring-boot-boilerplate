@@ -10,6 +10,9 @@ import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -31,6 +34,7 @@ import com.spring.app.shared.services.MonitoringService;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
+@ExtendWith(OutputCaptureExtension.class)
 class OAuth2HandlersTest {
 
   private static final String CALLBACK = "https://app.example.com/oauth2/callback";
@@ -112,5 +116,31 @@ class OAuth2HandlersTest {
     failureHandler.onAuthenticationFailure(request, response, new BadCredentialsException("secret"));
 
     assertThat(response.getRedirectedUrl()).isEqualTo(CALLBACK + "#error=authentication_failed");
+  }
+
+  @Test
+  void failureDropsTheHandshakeSession() throws Exception {
+    request.getSession(true);
+
+    failureHandler.onAuthenticationFailure(request, response,
+        new OAuth2AuthenticationException(new OAuth2Error("access_denied")));
+
+    assertThat(request.getSession(false)).as("OAuth2 handshake session dropped").isNull();
+  }
+
+  @Test
+  void anUnexpectedErrorIsLoggedAtErrorByTypeOnly(CapturedOutput output) throws Exception {
+    when(authService.issueTokensForOAuth2Login(any())).thenThrow(
+        new IllegalStateException("boom for victim@example.com", new java.sql.SQLException("victim@example.com")));
+
+    successHandler.onAuthenticationSuccess(request, response, oauth2Login("victim@example.com"));
+
+    assertThat(response.getRedirectedUrl()).isEqualTo(CALLBACK + "#error=server_error");
+    assertThat(output.getAll().lines().filter(line -> line.contains("ERROR")))
+        .isNotEmpty()
+        .allSatisfy(line -> assertThat(line)
+            .contains("IllegalStateException")
+            .contains("SQLException")
+            .doesNotContain("victim"));
   }
 }

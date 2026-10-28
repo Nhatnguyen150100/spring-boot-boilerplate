@@ -13,6 +13,7 @@ import org.springframework.security.config.annotation.web.configurers.ExceptionH
 import org.springframework.security.config.annotation.web.configurers.SessionManagementConfigurer;
 import org.springframework.security.config.annotation.web.configurers.oauth2.client.OAuth2LoginConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -27,6 +28,7 @@ import com.spring.app.handlers.OAuth2AuthenticationFailureHandler;
 import com.spring.app.handlers.OAuth2AuthenticationSuccessHandler;
 import com.spring.app.shared.services.CustomOAuth2UserService;
 
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 
 @Configuration
@@ -92,7 +94,10 @@ public class SecurityConfig {
    * Configures authorization settings for the application.
    *
    * <p>
-   * Order matters (first match wins): the explicit public lists from
+   * Order matters (first match wins): ERROR dispatches first (the container
+   * forwarding to {@code /error} after a failed request must render the
+   * error, not turn it into a 401 for anonymous callers; the original
+   * request was already authorized), then the explicit public lists from
    * {@link WhitelistUrlConstant}, then ADMIN for the remaining actuator
    * endpoints, then "authenticated" for everything else. Method security
    * ({@code @EnableMethodSecurity}) is on for {@code @PreAuthorize} on future
@@ -105,6 +110,7 @@ public class SecurityConfig {
   private void authorizeHttpRequests(
       AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth) {
     auth
+      .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
       .requestMatchers(HttpMethod.POST, WhitelistUrlConstant.PUBLIC_POST_URLS).permitAll()
       .requestMatchers(WhitelistUrlConstant.PUBLIC_URLS).permitAll()
       .requestMatchers(HttpMethod.GET, WhitelistUrlConstant.PUBLIC_GET_URLS).permitAll()
@@ -163,6 +169,13 @@ public class SecurityConfig {
    * must route both to the same one (there is deliberately no spring-session).
    * </p>
    *
+   * <p>
+   * The provider's authorized client (Google's access token) is kept in that
+   * same session, which both handlers invalidate, rather than in Spring's
+   * default in-memory service, where one entry per login would pile up for
+   * the life of the process. The app never calls Google with it again.
+   * </p>
+   *
    * @param oauth2 The OAuth2LoginConfigurer to configure.
    * @return The configured OAuth2LoginConfigurer.
    */
@@ -172,6 +185,7 @@ public class SecurityConfig {
             .baseUri(WhitelistUrlConstant.OAUTH2_LOGIN_URL))
         .redirectionEndpoint(redirection -> redirection
             .baseUri(WhitelistUrlConstant.OAUTH2_REDIRECT_URL))
+        .authorizedClientRepository(new HttpSessionOAuth2AuthorizedClientRepository())
         .userInfoEndpoint(userInfo -> userInfo
             .userService(customOAuth2UserService)
             .oidcUserService(customOAuth2UserService::loadOidcUser))
