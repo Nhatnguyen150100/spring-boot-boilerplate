@@ -10,6 +10,9 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.actuate.autoconfigure.health.HealthEndpointProperties;
+import org.springframework.boot.actuate.endpoint.Show;
+import org.springframework.boot.actuate.health.HealthContributorRegistry;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -35,6 +38,12 @@ class WebInfrastructureIntegrationTest {
   @Autowired
   private MockMvc mockMvc;
 
+  @Autowired
+  private HealthContributorRegistry healthContributorRegistry;
+
+  @Autowired
+  private HealthEndpointProperties healthEndpointProperties;
+
   @Test
   @SuppressWarnings("rawtypes")
   void appFiltersRunOnlyInsideTheSecurityChain() {
@@ -56,5 +65,18 @@ class WebInfrastructureIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.servers.length()").value(1))
         .andExpect(jsonPath("$.servers[0].url").value("/"));
+  }
+
+  @Test
+  void healthUsesBootIndicatorsOnly() {
+    assertThat(healthContributorRegistry.getContributor("db")).isNotNull();
+    assertThat(healthContributorRegistry.getContributor("redis")).isNotNull();
+    assertThat(healthContributorRegistry.getContributor("database")).isNull();
+  }
+
+  @Test
+  void healthDetailsAreForAdminsOnly() {
+    assertThat(healthEndpointProperties.getShowDetails()).isEqualTo(Show.WHEN_AUTHORIZED);
+    assertThat(healthEndpointProperties.getRoles()).containsExactly("ADMIN");
   }
 }

@@ -259,10 +259,16 @@ management:
     web:
       exposure:
         # Keep this minimal. Never expose env/configprops/beans/shutdown.
+        # /actuator/prometheus is ADMIN-only in SecurityConfig.
         include: health,info,prometheus
   endpoint:
     health:
+      # Anonymous callers (load balancer, compose healthcheck) get UP/DOWN
+      # only; component details need an authenticated ADMIN - the same rule
+      # SecurityConfig applies to /actuator/prometheus. The indicators are
+      # Boot's own (db, redis, diskSpace, ping); there is no custom one.
       show-details: when_authorized
+      roles: ADMIN
   metrics:
     tags:
       application: ${APP_NAME:springapp}
