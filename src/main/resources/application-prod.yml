@@ -54,6 +54,12 @@ server:
     key-store: ${SSL_KEYSTORE:}
     key-store-password: ${SSL_KEYSTORE_PASSWORD:}
     key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
+  # Tomcat's RemoteIpValve applies X-Forwarded-For / X-Forwarded-Proto, but
+  # ProxyHeadersConfig limits it to the peers listed in TRUSTED_PROXIES
+  # (application.trusted-proxies) - Tomcat's own default would trust every
+  # private-range address. Behind a load balancer, set TRUSTED_PROXIES to its
+  # IP(s); left empty, the headers are ignored and every client is seen as the
+  # load balancer (one shared rate-limit bucket).
   forward-headers-strategy: native
 
 application:
