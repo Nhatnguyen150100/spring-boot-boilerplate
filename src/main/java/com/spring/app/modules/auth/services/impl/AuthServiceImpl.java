@@ -1,15 +1,17 @@
 package com.spring.app.modules.auth.services.impl;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +22,6 @@ import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
-import com.spring.app.exceptions.ResourceNotFoundException;
 import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
@@ -54,8 +55,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class AuthServiceImpl implements AuthServiceInterface {
 
+  static final String INVALID_CREDENTIALS = "Invalid email or password";
+  static final String INVALID_OTP = "Invalid or expired OTP";
   static final String INVALID_ACCESS_TOKEN = "Invalid or expired token";
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
+  static final String REGISTRATION_REJECTED = "This email cannot be registered";
 
   @Value("${spring.profiles.active}")
   private String activeProfile;
@@ -90,27 +94,34 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Transactional
   public ResponseEntity<?> register(RegisterRequestDto dto) {
     Timer.Sample timer = monitoringService.startRegistrationTimer();
-
     try {
       String emailRegister = dto.email();
       throttleByEmail(emailRegister);
-      validateEmailUniqueness(emailRegister);
+
+      // uk_users_email covers every row, DELETED included, so any existing row
+      // owns the address. Checking only non-DELETED rows let the INSERT hit the
+      // constraint (500) after the OTP had already been sent.
+      if (userRepository.existsByEmail(emailRegister)) {
+        throw new ConflictException(REGISTRATION_REJECTED);
+      }
 
       boolean isDevMode = activeProfile.equals("dev");
+      User newUser = User.builder().email(emailRegister).password(passwordEncoder.encode(dto.password()))
+          .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
+      try {
+        userRepository.saveAndFlush(newUser);
+      } catch (DataIntegrityViolationException e) {
+        // Lost a race with a concurrent registration of the same address.
+        throw new ConflictException(REGISTRATION_REJECTED);
+      }
 
+      // Only once the row exists: an OTP for an account that failed to save is useless.
       if (!isDevMode) {
         otpEmailService.sendOtpEmailAsync(emailRegister);
       }
 
-      User newUser = User.builder().email(emailRegister).password(passwordEncoder.encode(dto.password()))
-          .status(isDevMode ? EUserStatus.ACTIVE : EUserStatus.PENDING).fullName(dto.fullName()).build();
-      userRepository.save(newUser);
-
-      authCacheService.evictCachedUser(emailRegister);
-
       var response = authMapper.userToRegisterResponseDto(newUser);
       monitoringService.incrementRegistrationAttempts();
-
       return ResponseBuilder.created("User registered successfully", response);
     } finally {
       monitoringService.stopRegistrationTimer(timer);
@@ -120,39 +131,32 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   public ResponseEntity<?> resendOtp(String email) {
     throttleByEmail(email);
-    User user = authCacheService.getUserByEmail(email);
-
-    if (user.getStatus() != EUserStatus.PENDING) {
-      throw new BadRequestException("User is not in pending status, cannot resend OTP");
-    }
-
-    otpEmailService.sendOtpEmailAsync(email);
-
-    return ResponseBuilder.success("OTP resent successfully");
+    // Same answer whether the account is unknown, ACTIVE or PENDING.
+    userRepository.findByEmail(email)
+        .filter(user -> user.getStatus() == EUserStatus.PENDING)
+        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
+    return ResponseBuilder.success("If the account is awaiting activation, a new OTP has been sent");
   }
 
   @Override
   @Transactional
   public ResponseEntity<?> activeAccount(ActiveAccountRequestDto dto) {
     String email = dto.email();
-    String otp = dto.otp();
     throttleByEmail(email);
-    User user = authCacheService.getUserByEmail(email);
 
-    if (user.getStatus() != EUserStatus.PENDING) {
-      throw new BadRequestException("User is not in pending status, cannot activate account");
+    // Unknown e-mail, wrong status and wrong OTP all get the same 400.
+    boolean otpValid = otpFunction.validateOtp(email, dto.otp());
+    Optional<User> pending = userRepository.findByEmail(email)
+        .filter(user -> user.getStatus() == EUserStatus.PENDING);
+    if (!otpValid || pending.isEmpty()) {
+      throw new BadRequestException(INVALID_OTP);
     }
 
-    if (!otpFunction.validateOtp(email, otp)) {
-      throw new BadRequestException("Invalid or expired OTP");
-    }
-
+    User user = pending.get();
     user.setStatus(EUserStatus.ACTIVE);
     userRepository.save(user);
-
     otpFunction.removeOtp(email);
     authCacheService.updateCachedUser(user);
-
     return ResponseBuilder.success("Account activated successfully");
   }
 
@@ -202,19 +206,24 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   @Transactional
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
-    if (!jwtService.isRefreshToken(dto.refreshToken())) {
+    String presented = dto.refreshToken();
+    if (!jwtService.isRefreshToken(presented)) {
       throw new InvalidTokenException(INVALID_REFRESH_TOKEN);
     }
-    RefreshToken oldToken = authCacheService.getRefreshToken(dto.refreshToken());
+    RefreshToken oldToken = refreshTokenRepository.findByToken(presented)
+        .filter(token -> !token.isRevoked())
+        .filter(token -> token.getExpiryDate() != null && token.getExpiryDate().isAfter(Instant.now()))
+        .orElseThrow(() -> new InvalidTokenException(INVALID_REFRESH_TOKEN));
 
-    if (oldToken.isRevoked() || oldToken.getExpiryDate().isBefore(Instant.now())) {
-      throw new BadRequestException("Token is revoked or expired");
+    User user = oldToken.getUser();
+    // A DELETED / INACTIVE / PENDING account must not keep minting tokens.
+    if (user.getStatus() != EUserStatus.ACTIVE) {
+      throw new InvalidTokenException(INVALID_REFRESH_TOKEN);
     }
 
     oldToken.setRevoked(true);
     refreshTokenRepository.save(oldToken);
 
-    User user = oldToken.getUser();
     String accessToken = jwtService.generateToken(user);
     String newRefreshToken = createAndStoreRefreshToken(user);
 
@@ -225,38 +234,31 @@ public class AuthServiceImpl implements AuthServiceInterface {
   @Override
   public ResponseEntity<?> forgotPassword(String email) {
     throttleByEmail(email);
-    try {
-      User user = authCacheService.getUserByEmail(email);
-      if (user.getStatus() == EUserStatus.ACTIVE) {
-        otpEmailService.sendOtpEmailAsync(email);
-      }
-    } catch (ResourceNotFoundException e) {
-      log.debug("Forgot password requested for non-existent email: {}", email);
-    }
+    userRepository.findByEmail(email)
+        .filter(user -> user.getStatus() == EUserStatus.ACTIVE)
+        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
     return ResponseBuilder.success("If your email is registered, you will receive an OTP shortly");
   }
 
   @Override
   @Transactional
   public ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto) {
-    throttleByEmail(dto.email());
-    User user = authCacheService.getUserByEmail(dto.email());
+    String email = dto.email();
+    throttleByEmail(email);
 
-    if (user.getStatus() != EUserStatus.ACTIVE) {
-      throw new BadRequestException("Account is not active");
+    // Unknown e-mail, non-ACTIVE account and wrong OTP all get the same 400.
+    boolean otpValid = otpFunction.validateOtp(email, dto.otp());
+    Optional<User> active = userRepository.findByEmail(email)
+        .filter(user -> user.getStatus() == EUserStatus.ACTIVE);
+    if (!otpValid || active.isEmpty()) {
+      throw new BadRequestException(INVALID_OTP);
     }
 
-    if (!otpFunction.validateOtp(dto.email(), dto.otp())) {
-      throw new BadRequestException("Invalid or expired OTP");
-    }
-
+    User user = active.get();
     user.setPassword(passwordEncoder.encode(dto.newPassword()));
     userRepository.save(user);
-
-    otpFunction.removeOtp(dto.email());
-    authCacheService.updateCachedUser(user);
+    otpFunction.removeOtp(email);
     refreshTokenRepository.revokeAllByUser(user);
-
     return ResponseBuilder.success("Password reset successfully");
   }
 
@@ -275,19 +277,16 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return claims;
   }
 
-  private void validateEmailUniqueness(String email) {
-    if (userRepository.existsByEmailAndStatusNot(email, EUserStatus.DELETED)) {
-      throw new ConflictException("Email already registered");
-    }
-  }
-
   private User authenticate(String email, String password) {
     try {
-      Authentication authentication = new UsernamePasswordAuthenticationToken(email, password);
-      Authentication authenticated = authenticationManager.authenticate(authentication);
+      Authentication authenticated = authenticationManager
+          .authenticate(new UsernamePasswordAuthenticationToken(email, password));
       return (User) authenticated.getPrincipal();
-    } catch (BadCredentialsException ex) {
-      throw new UsernameNotFoundException("Invalid email or password");
+    } catch (AuthenticationException ex) {
+      // Unknown e-mail, DELETED account and wrong password look the same.
+      // UserNotActiveException is not an AuthenticationException: it is thrown
+      // only after the password matched and propagates unchanged.
+      throw new BadCredentialsException(INVALID_CREDENTIALS);
     }
   }
 

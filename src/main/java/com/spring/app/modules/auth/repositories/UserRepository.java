@@ -16,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
   boolean existsByEmailAndStatusNot(String email, EUserStatus status);
 
+  /** Any row, DELETED included - the same scope as the uk_users_email constraint. */
+  boolean existsByEmail(String email);
+
   Optional<User> findByEmailAndStatus(String email, EUserStatus status);
 
   Optional<User> findByEmail(String email);

@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -88,6 +89,18 @@ class JwtFunctionUtilTest {
     jwtFunction.authenticateAccessToken(jwtService.generateToken(user), request);
 
     assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+  }
+
+  @Test
+  void redisFailureDuringTheBlacklistCheckFailsClosed() {
+    User user = user(EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(user);
+    when(redisService.isTokenBlacklisted(token)).thenThrow(new RedisConnectionFailureException("redis down"));
+
+    jwtFunction.authenticateAccessToken(token, request);
+
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    verifyNoInteractions(userDetailsService);
   }
 
   @Test

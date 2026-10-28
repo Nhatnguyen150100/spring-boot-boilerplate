@@ -1,34 +1,55 @@
 package com.spring.app.modules.auth.services.impl;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.EUserStatus;
+import com.spring.app.exceptions.BadRequestException;
+import com.spring.app.exceptions.ConflictException;
+import com.spring.app.exceptions.UserNotActiveException;
+import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
+import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
+import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
+import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.exceptions.InvalidTokenException;
 import com.spring.app.modules.auth.mapper.AuthMapper;
@@ -100,6 +121,49 @@ class AuthServiceImplTest {
     SecurityContextHolder.clearContext();
   }
 
+  @BeforeEach
+  void setUp() {
+    // AuthServiceImpl reads spring.profiles.active through @Value until Task 5.
+    ReflectionTestUtils.setField(authService, "activeProfile", "test");
+  }
+
+  private void givenUser(User user) {
+    when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+  }
+
+  private RefreshToken givenStoredRefreshToken(String token, User owner) {
+    RefreshToken stored = RefreshToken.builder()
+        .token(token)
+        .user(owner)
+        .expiryDate(Instant.now().plusSeconds(3600))
+        .build();
+    when(refreshTokenRepository.findByToken(token)).thenReturn(Optional.of(stored));
+    return stored;
+  }
+
+  static RegisterRequestDto registerDto(String email) {
+    return new RegisterRequestDto(email, "Str0ng!Pass", "New User", "+84 912 345 678", "1 Main St");
+  }
+
+  private User savedUser() {
+    ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+    verify(userRepository).saveAndFlush(captor.capture());
+    return captor.getValue();
+  }
+
+  private ResponseEntity<?> login(String email, String password) {
+    return authService.login(new LoginRequestDto(email, password));
+  }
+
+  private void givenAuthenticationSucceedsFor(User user) {
+    when(authenticationManager.authenticate(any()))
+        .thenReturn(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
+  }
+
+  private static Object data(ResponseEntity<?> response) {
+    return ((BaseResponse<?>) response.getBody()).getData();
+  }
+
   // ---- Task 2: token types --------------------------------------------------
 
   @Test
@@ -157,5 +221,162 @@ class AuthServiceImplTest {
 
     verify(redisService).blacklistToken(eq(token), longThat(seconds -> seconds > 0));
     verify(refreshTokenRepository).revokeAllByUser(user);
+  }
+
+  // ---- Task 3: status checks and enumeration -----------------------------------
+
+  @Test
+  void registerRejectsAnEmailHeldByADeletedAccount() {
+    when(userRepository.existsByEmail("gone@example.com")).thenReturn(true);
+
+    assertThatThrownBy(() -> authService.register(registerDto("gone@example.com")))
+        .isInstanceOf(ConflictException.class)
+        .hasMessage("This email cannot be registered");
+    verify(userRepository, never()).saveAndFlush(any());
+    verifyNoInteractions(otpEmailService);
+  }
+
+  @Test
+  void registerTurnsAConcurrentDuplicateIntoAConflictAndSendsNoOtp() {
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(new DataIntegrityViolationException("uk_users_email"));
+
+    assertThatThrownBy(() -> authService.register(registerDto("race@example.com")))
+        .isInstanceOf(ConflictException.class)
+        .hasMessage("This email cannot be registered");
+    verifyNoInteractions(otpEmailService);
+  }
+
+  @Test
+  void registerSendsTheOtpAfterTheUserIsSaved() {
+    authService.register(registerDto("new@example.com"));
+
+    assertThat(savedUser().getStatus()).isEqualTo(EUserStatus.PENDING);
+    verify(otpEmailService).sendOtpEmailAsync("new@example.com");
+  }
+
+  @Test
+  void resendOtpAnswersIdenticallyWhateverTheAccountState() {
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+
+    Object unknown = data(authService.resendOtp("nobody@example.com"));
+    Object active = data(authService.resendOtp("active@example.com"));
+    Object pending = data(authService.resendOtp("pending@example.com"));
+
+    assertThat(unknown).isEqualTo(active).isEqualTo(pending);
+    verify(otpEmailService).sendOtpEmailAsync("pending@example.com");
+    verify(otpEmailService, never()).sendOtpEmailAsync("active@example.com");
+    verify(otpEmailService, never()).sendOtpEmailAsync("nobody@example.com");
+  }
+
+  @Test
+  void forgotPasswordAnswersIdenticallyAndOnlyMailsActiveAccounts() {
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+
+    Object unknown = data(authService.forgotPassword("nobody@example.com"));
+    Object active = data(authService.forgotPassword("active@example.com"));
+    Object pending = data(authService.forgotPassword("pending@example.com"));
+
+    assertThat(unknown).isEqualTo(active).isEqualTo(pending);
+    verify(otpEmailService).sendOtpEmailAsync("active@example.com");
+    verify(otpEmailService, never()).sendOtpEmailAsync("pending@example.com");
+  }
+
+  @Test
+  void activationFailsIdenticallyForUnknownEmailWrongStatusAndWrongOtp() {
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+    when(otpFunction.validateOtp("nobody@example.com", "123456")).thenReturn(true);
+    when(otpFunction.validateOtp("active@example.com", "123456")).thenReturn(true);
+    when(otpFunction.validateOtp("pending@example.com", "123456")).thenReturn(false);
+
+    for (String email : List.of("nobody@example.com", "active@example.com", "pending@example.com")) {
+      assertThatThrownBy(() -> authService.activeAccount(new ActiveAccountRequestDto(email, "123456")))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessage("Invalid or expired OTP");
+    }
+    verify(userRepository, never()).save(any());
+  }
+
+  @Test
+  void activationActivatesAPendingAccountAndEvictsItsProfile() {
+    User pending = user("pending@example.com", EUserStatus.PENDING);
+    givenUser(pending);
+    when(otpFunction.validateOtp("pending@example.com", "123456")).thenReturn(true);
+
+    authService.activeAccount(new ActiveAccountRequestDto("pending@example.com", "123456"));
+
+    assertThat(pending.getStatus()).isEqualTo(EUserStatus.ACTIVE);
+    verify(userRepository).save(pending);
+    verify(otpFunction).removeOtp("pending@example.com");
+    verify(authCacheService).updateCachedUser(pending);
+  }
+
+  @Test
+  void passwordResetFailsIdenticallyForUnknownNonActiveAndWrongOtp() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    when(otpFunction.validateOtp("nobody@example.com", "123456")).thenReturn(true);
+    when(otpFunction.validateOtp("pending@example.com", "123456")).thenReturn(true);
+    when(otpFunction.validateOtp("active@example.com", "123456")).thenReturn(false);
+
+    for (String email : List.of("nobody@example.com", "pending@example.com", "active@example.com")) {
+      assertThatThrownBy(() -> authService.resetPassword(
+          new ResetPasswordRequestDto(email, "123456", "NewStr0ng!Pass")))
+          .isInstanceOf(BadRequestException.class)
+          .hasMessage("Invalid or expired OTP");
+    }
+    verify(refreshTokenRepository, never()).revokeAllByUser(any());
+  }
+
+  @Test
+  void refreshIsRefusedForANonActiveAccount() {
+    User inactive = user("inactive@example.com", EUserStatus.INACTIVE);
+    String token = jwtService.generateRefreshToken(inactive);
+    givenStoredRefreshToken(token, inactive);
+
+    assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
+        .isInstanceOf(InvalidTokenException.class);
+    verify(refreshTokenRepository, never()).save(any());
+  }
+
+  @Test
+  void refreshIsRefusedForARevokedOrUnknownToken() {
+    User active = user("active@example.com", EUserStatus.ACTIVE);
+    String revoked = jwtService.generateRefreshToken(active);
+    givenStoredRefreshToken(revoked, active).setRevoked(true);
+    String unknown = jwtService.generateRefreshToken(active);
+
+    for (String token : List.of(revoked, unknown)) {
+      assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
+          .isInstanceOf(InvalidTokenException.class)
+          .hasMessage("Invalid or expired refresh token");
+    }
+    verify(refreshTokenRepository, never()).save(any());
+  }
+
+  @Test
+  void loginGivesTheSameAnswerForUnknownEmailAndWrongPassword() {
+    when(authenticationManager.authenticate(any()))
+        .thenThrow(new BadCredentialsException("Bad credentials"))
+        .thenThrow(new UsernameNotFoundException("nobody"));
+
+    assertThatThrownBy(() -> login("active@example.com", "Wr0ng!Pass"))
+        .isInstanceOf(BadCredentialsException.class)
+        .hasMessage("Invalid email or password");
+    assertThatThrownBy(() -> login("nobody@example.com", "Wr0ng!Pass"))
+        .isInstanceOf(BadCredentialsException.class)
+        .hasMessage("Invalid email or password");
+  }
+
+  @Test
+  void loginReportsANonActiveAccountOnlyWhenTheProviderDoes() {
+    when(authenticationManager.authenticate(any())).thenThrow(new UserNotActiveException("Account is not active"));
+
+    assertThatThrownBy(() -> login("pending@example.com", "Str0ng!Pass"))
+        .isInstanceOf(UserNotActiveException.class)
+        .hasMessage("Account is not active");
   }
 }

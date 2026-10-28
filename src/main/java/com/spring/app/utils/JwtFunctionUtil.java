@@ -1,10 +1,12 @@
 package com.spring.app.utils;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 
@@ -58,7 +60,9 @@ public class JwtFunctionUtil {
    * <p>
    * The context is left empty (the request stays anonymous) when the token is
    * a refresh token, has been blacklisted by logout, or belongs to an account
-   * that is not ACTIVE.
+   * that is not ACTIVE or no longer exists (DELETED). It also stays empty when
+   * the blacklist cannot be consulted (Redis down): failing open would let a
+   * logged-out token work again, so the check fails closed.
    * </p>
    *
    * <p>
@@ -69,8 +73,6 @@ public class JwtFunctionUtil {
    *
    * @throws io.jsonwebtoken.JwtException for an expired, forged or malformed token
    * @throws IllegalArgumentException      for an empty token
-   * @throws org.springframework.security.core.userdetails.UsernameNotFoundException
-   *                                       when the subject no longer exists
    */
   public void authenticateAccessToken(String jwt, HttpServletRequest request) {
     Claims claims = jwtService.parseClaims(jwt);
@@ -78,11 +80,22 @@ public class JwtFunctionUtil {
         claims.get(JwtServiceInterface.TOKEN_TYPE_CLAIM, String.class))) {
       return;
     }
-    if (redisService.isTokenBlacklisted(jwt)) {
+    try {
+      if (redisService.isTokenBlacklisted(jwt)) {
+        return;
+      }
+    } catch (DataAccessException e) {
+      log.warn("Token blacklist unavailable ({}); treating the request as anonymous", e.getClass().getSimpleName());
       return;
     }
 
-    UserDetails userDetails = userDetailsService.loadUserByUsername(claims.getSubject());
+    UserDetails userDetails;
+    try {
+      userDetails = userDetailsService.loadUserByUsername(claims.getSubject());
+    } catch (UsernameNotFoundException e) {
+      // The account no longer exists (or is DELETED): no longer a valid bearer.
+      return;
+    }
     if (!(userDetails instanceof User user) || user.getStatus() != EUserStatus.ACTIVE) {
       return;
     }
