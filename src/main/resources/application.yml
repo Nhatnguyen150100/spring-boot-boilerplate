@@ -221,31 +221,30 @@ application:
 
   # Quotas are identical in every environment today, so they are declared once
   # here. Override a single bucket in a profile file if that ever changes.
+  # Buckets (see ERateLimitEndpoint): auth = /api/v1/auth/**, upload =
+  # /api/v1/files/**, api = every other /api/**, global = everything else.
+  # Fixed windows counted per client IP in Redis.
   rate-limit:
     global:
       enabled: true
       requests-per-minute: 100
       requests-per-hour: 1000
       requests-per-day: 10000
-      burst-capacity: 200
     auth:
       enabled: true
       requests-per-minute: 10
       requests-per-hour: 100
       requests-per-day: 1000
-      burst-capacity: 20
     upload:
       enabled: true
       requests-per-minute: 5
       requests-per-hour: 50
       requests-per-day: 500
-      burst-capacity: 10
     api:
       enabled: true
       requests-per-minute: 60
       requests-per-hour: 600
       requests-per-day: 6000
-      burst-capacity: 100
 
 springdoc:
   api-docs:

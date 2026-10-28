@@ -38,9 +38,6 @@ public class RateLimitProperties {
     @Min(value = 1, message = "requests-per-day must be at least 1")
     private int requestsPerDay = 6000;
 
-    @Min(value = 1, message = "burst-capacity must be at least 1")
-    private int burstCapacity = 100;
-
     private boolean enabled = true;
   }
 
