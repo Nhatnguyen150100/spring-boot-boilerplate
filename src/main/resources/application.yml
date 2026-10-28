@@ -180,7 +180,15 @@ application:
 
   file:
     storage:
+      # Files live in <upload-dir>/<userId>/; in-flight uploads in <upload-dir>/.tmp/.
       upload-dir: ${UPLOAD_DIR:uploads}
+      # An upload is accepted only if BOTH its Content-Type (parameters ignored)
+      # and its file-name extension are listed. Comma-separated, case-insensitive.
+      allowed-content-types: ${UPLOAD_ALLOWED_CONTENT_TYPES:image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain}
+      allowed-extensions: ${UPLOAD_ALLOWED_EXTENSIONS:png,jpg,jpeg,gif,webp,pdf,txt}
+      # Mode of stored files (ls -l form) so e.g. nginx or a backup agent running
+      # as another OS user can read them. Ignored on non-POSIX file systems.
+      file-permissions: ${UPLOAD_FILE_PERMISSIONS:rw-r--r--}
 
   mail:
     app: ${MAIL_APP_NAME:SPRING_APP}

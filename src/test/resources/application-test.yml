@@ -67,7 +67,11 @@ application:
     write-timeout: 2s
   file:
     storage:
-      upload-dir: uploads-test
+      # Under target/ so `mvn test` never writes into the repository root.
+      upload-dir: target/uploads-test
+      allowed-content-types: [text/plain, application/pdf, image/png]
+      allowed-extensions: [txt, pdf, png]
+      file-permissions: rw-r--r--
   cache:
     users-ttl: 10m
   async:

@@ -146,3 +146,20 @@ Notes: default in `application.yml` is `5` (read by
 `application.auth.otp-max-attempts`). OTP verification
 (`/activate`, `/reset-password`) no longer consumes the per-e-mail AUTH
 rate-limit bucket; only the OTP-sending endpoints do.
+
+## P5 Task 3 (upload allowlists and file permissions)
+
+Insert directly below the `UPLOAD_DIR` line. If there is no `UPLOAD_DIR` line,
+append `UPLOAD_DIR=uploads` followed by these lines at the end of the file, under a
+`# --- File uploads ---` comment:
+
+```
+# Uploads are accepted only if BOTH the Content-Type and the extension are listed (comma-separated)
+UPLOAD_ALLOWED_CONTENT_TYPES=image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain
+UPLOAD_ALLOWED_EXTENSIONS=png,jpg,jpeg,gif,webp,pdf,txt
+# POSIX mode of stored files (ls -l form)
+UPLOAD_FILE_PERMISSIONS=rw-r--r--
+```
+
+Notes: defaults in `application.yml` are the values above (read by
+`application.file.storage.allowed-content-types|allowed-extensions|file-permissions`).
