@@ -14,24 +14,27 @@ import org.springframework.core.Ordered;
 import com.spring.app.configs.properties.ApplicationProperties;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Makes Tomcat's {@link RemoteIpValve} (created by Boot when
  * {@code server.forward-headers-strategy=native}, i.e. in prod) trust
  * {@code X-Forwarded-For} / {@code X-Forwarded-Proto} only from the peers in
- * {@code application.trusted-proxies} - the same list {@code RateLimitFilter}
- * uses. Tomcat's default trusts every private-range peer, so any container on
+ * {@code application.trusted-proxies} - the same list {@code ClientKeys} (rate
+ * limiting, login throttling) uses. Tomcat's default trusts every private-range peer, so any container on
  * a shared network could choose its own client IP.
  *
  * <p>
  * Addresses are matched exactly as Tomcat reports the peer
  * ({@code request.getRemoteAddr()}); write IPv6 entries in that full form.
- * With an empty list no peer is trusted and the forwarded headers are ignored.
+ * With an empty list no peer is trusted and the forwarded headers are ignored
+ * (logged once at WARN when the valve is present).
  * When the strategy is not {@code native} there is no valve and this is a no-op.
  * </p>
  */
 @Configuration
 @RequiredArgsConstructor
+@Slf4j
 public class ProxyHeadersConfig {
 
   private final ApplicationProperties applicationProperties;
@@ -71,10 +74,16 @@ public class ProxyHeadersConfig {
 
     @Override
     public void customize(TomcatServletWebServerFactory factory) {
-      factory.getEngineValves().stream()
+      List<RemoteIpValve> valves = factory.getEngineValves().stream()
           .filter(RemoteIpValve.class::isInstance)
           .map(RemoteIpValve.class::cast)
-          .forEach(valve -> valve.setInternalProxies(internalProxiesRegex));
+          .toList();
+      valves.forEach(valve -> valve.setInternalProxies(internalProxiesRegex));
+      if (!valves.isEmpty() && internalProxiesRegex == null) {
+        log.warn("server.forward-headers-strategy=native but application.trusted-proxies is empty: "
+            + "X-Forwarded-For and X-Forwarded-Proto are ignored, so every client appears as the proxy's "
+            + "address and requests forwarded over HTTPS look like plain HTTP. Set TRUSTED_PROXIES.");
+      }
     }
 
     /** After Boot's TomcatWebServerFactoryCustomizer (order 0), which adds the valve. */
