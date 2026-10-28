@@ -21,16 +21,19 @@ public class MailService implements MailServiceInterface {
 
   private final MailProperties mailProperties;
   private final JavaMailSender mailSender;
+  private final HtmlTemplateOTPBuilder otpTemplate;
   private final Semaphore sendPermits;
 
-  public MailService(MailProperties mailProperties, JavaMailSender mailSender) {
+  public MailService(MailProperties mailProperties, JavaMailSender mailSender, HtmlTemplateOTPBuilder otpTemplate) {
     this.mailProperties = mailProperties;
     this.mailSender = mailSender;
+    this.otpTemplate = otpTemplate;
     this.sendPermits = new Semaphore(mailProperties.getMaxConcurrentSends());
   }
 
+  @Override
   public void sendOtpEmail(String to, String otp) throws MessagingException {
-    String htmlContent = HtmlTemplateOTPBuilder.buildOtpHtml(otp);
+    String htmlContent = otpTemplate.buildOtpHtml(otp);
 
     MimeMessage message = mailSender.createMimeMessage();
     MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
