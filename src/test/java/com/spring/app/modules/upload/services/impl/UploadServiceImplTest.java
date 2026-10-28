@@ -22,13 +22,14 @@ import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.web.util.UriUtils;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.FileStorageProperties;
@@ -173,18 +174,87 @@ class UploadServiceImplTest {
   }
 
   @Test
-  void downloadHeaderNeutralizesQuotesAndLineBreaksInFileName() {
-    String name = "a\"b\r\nSet-Cookie: x=y.pdf";
-    assumeTrue(fileSystemCanStore(name), "platform file-name encoding cannot represent this name");
+  void downloadHeaderOfAsciiNameIsAPlainLegacyFilename() {
     UploadServiceImpl service = newService();
-    service.storeFile(new MockMultipartFile("file", name, "application/pdf", "%PDF".getBytes(StandardCharsets.UTF_8)));
+    service.storeFile(new MockMultipartFile("file", "report.pdf", "application/pdf",
+      "%PDF".getBytes(StandardCharsets.UTF_8)));
 
-    String header = service.downFile(name).getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+    String header = service.downFile("report.pdf").getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
 
-    assertThat(header).doesNotContain("\r").doesNotContain("\n");
-    // Clients that follow RFC 6266 read filename*; the quoted legacy filename= is best effort.
-    String encoded = header.substring(header.indexOf("filename*=UTF-8''") + "filename*=UTF-8''".length());
-    assertThat(UriUtils.decode(encoded, StandardCharsets.UTF_8)).isEqualTo(name);
+    assertThat(header).isEqualTo("attachment; filename=\"report.pdf\"");
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+    "a\"b.txt", "a%b.txt", "a;b.txt", "a\\b.txt", "a\rb.txt", "a\nb.txt", "a\tb.txt", "a\u0001b.txt",
+    "a\u007fb.txt", "a\u0085b.txt", "a\u2028b.txt", "a\u2029b.txt",
+    "a\u202eb.txt", "a\u200bb.txt", "a\u200fb.txt", "a\ufeffb.txt", "a\ud83d\udc01\udb40\udc01b.txt",
+    "a\"b\r\nSet-Cookie: x=y.txt" })
+  void rejectsFileNamesThatCouldNeverBeServedOrWouldBreakHeadersAndLogs(String name) throws IOException {
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.storeFile(file(name, "hello")))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file name");
+    assertThat(dir.resolve(USER_A)).doesNotExist();
+    assertTempDirEmpty();
+  }
+
+  @Test
+  void rejectsFileNameLongerThan255Utf8Bytes() {
+    UploadServiceImpl service = newService();
+    String longest = "a".repeat(251) + ".txt"; // exactly 255 bytes
+    String tooLong = "a".repeat(252) + ".txt";
+    String tooLongMultiByte = "\u00e1".repeat(126) + ".txt"; // 130 chars but 2 bytes each: 252 + 4 = 256 bytes
+
+    service.storeFile(file(longest, "hello"));
+    assertThat(fileOf(USER_A, longest)).hasContent("hello");
+    for (String name : List.of(tooLong, tooLongMultiByte)) {
+      assertThat(name.getBytes(StandardCharsets.UTF_8)).hasSize(256);
+      assertThatThrownBy(() -> service.storeFile(file(name, "hello")))
+        .isInstanceOf(BadRequestException.class)
+        .hasMessage("File name is too long");
+    }
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = { "evil.html/..", "a.png.", "README", "..", "." })
+  void rejectsNamesWithoutAnAllowedExtension(String name) {
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.storeFile(file(name, "hello")))
+      .isInstanceOf(BadRequestException.class);
+    assertThat(dir.resolve(USER_A)).doesNotExist();
+  }
+
+  @Test
+  void rejectsNameContainingNul() {
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.storeFile(file("a\0.txt", "hello")))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file name");
+  }
+
+  @Test
+  void acceptsDoubleExtensionWhenTheLastOneIsAllowedAndContentTypeMatches() {
+    UploadServiceImpl service = newService();
+
+    service.storeFile(new MockMultipartFile("file", "x.html.png", "image/png", new byte[] { 1 }));
+
+    assertThat(fileOf(USER_A, "x.html.png")).exists();
+  }
+
+  @Test
+  void clientSuppliedDirectoriesInTheOriginalFileNameAreDropped() {
+    UploadServiceImpl service = newService();
+
+    BaseResponse<?> body = body(service.storeFile(file("../../x.txt", "hello")));
+
+    assertThat(body.getData()).isEqualTo("x.txt");
+    assertThat(fileOf(USER_A, "x.txt")).hasContent("hello");
+    assertThat(dir.resolve("x.txt")).doesNotExist();
+    assertThat(dir.getParent().resolve("x.txt")).doesNotExist();
   }
 
   @Test

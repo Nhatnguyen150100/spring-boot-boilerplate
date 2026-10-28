@@ -76,6 +76,9 @@ public class UploadServiceImpl implements UploadServiceInterface {
    */
   static final Duration STALE_TEMP_AGE = Duration.ofHours(1);
 
+  /** Longest file name the common file systems (ext4, NTFS, APFS) accept. */
+  private static final int MAX_FILE_NAME_BYTES = 255;
+
   /** Temp files written straight into the upload root by earlier versions. */
   private static final String LEGACY_TEMP_GLOB = ".upload-*.tmp";
 
@@ -211,15 +214,21 @@ public class UploadServiceImpl implements UploadServiceInterface {
     if (!Files.isRegularFile(filePath) || !Files.isReadable(filePath)) {
       throw new ResourceNotFoundException("File not found");
     }
-    // Non-ASCII names, quotes and control characters are percent-encoded in
-    // filename* (RFC 5987), so the header cannot be split.
-    ContentDisposition disposition = ContentDisposition.attachment()
-      .filename(filePath.getFileName().toString(), StandardCharsets.UTF_8)
-      .build();
+    // Stored names never contain quotes or control characters (validateFile), so a
+    // plain filename= is safe for ASCII; anything else also gets filename* (RFC 5987).
+    String name = filePath.getFileName().toString();
+    ContentDisposition.Builder builder = ContentDisposition.attachment();
+    ContentDisposition disposition = (isPrintableAscii(name)
+      ? builder.filename(name)
+      : builder.filename(name, StandardCharsets.UTF_8)).build();
     return ResponseEntity.ok()
       .contentType(MediaType.APPLICATION_OCTET_STREAM)
       .headers(headers -> headers.setContentDisposition(disposition))
       .body(new FileSystemResource(filePath));
+  }
+
+  private static boolean isPrintableAscii(String value) {
+    return value.chars().allMatch(c -> c >= 0x20 && c <= 0x7e);
   }
 
   @Override
@@ -256,11 +265,32 @@ public class UploadServiceImpl implements UploadServiceInterface {
     } catch (InvalidPathException ex) {
       throw new BadRequestException("Invalid file name");
     }
+    if (fileName.getBytes(StandardCharsets.UTF_8).length > MAX_FILE_NAME_BYTES) {
+      throw new BadRequestException("File name is too long");
+    }
+    if (fileName.codePoints().anyMatch(UploadServiceImpl::isUnusableInFileName)) {
+      throw new BadRequestException("Invalid file name");
+    }
     if (!allowedExtensions.contains(extensionOf(fileName))
       || !allowedContentTypes.contains(baseTypeOf(file.getContentType()))) {
       throw new BadRequestException("File type not allowed");
     }
     return fileName;
+  }
+
+  /**
+   * Characters a stored name must not contain: control characters (forge log
+   * lines), quote, percent, semicolon and backslash (break the legacy
+   * {@code filename=} header or the URL that downloads/deletes the file;
+   * StrictHttpFirewall rejects %25, semicolons and backslashes in paths), the Unicode line and
+   * paragraph separators (also rejected in URLs) and format characters such
+   * as the bidi override U+202E (spoof the displayed extension).
+   */
+  private static boolean isUnusableInFileName(int codePoint) {
+    return Character.isISOControl(codePoint)
+      || codePoint == '"' || codePoint == '%' || codePoint == ';' || codePoint == '\\'
+      || codePoint == '\u2028' || codePoint == '\u2029'
+      || Character.getType(codePoint) == Character.FORMAT;
   }
 
   /** @return the text after the last dot, lower-cased; "" when there is none */
