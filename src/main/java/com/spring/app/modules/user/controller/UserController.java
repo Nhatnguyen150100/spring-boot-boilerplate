@@ -11,7 +11,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.spring.app.common.response.BaseResponse;
+import com.spring.app.common.response.ResponseBuilder;
 import com.spring.app.constants.ApplicationConstants;
+import com.spring.app.modules.auth.dto.response.UserResponseDto;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.user.dto.requests.UpdateUserDto;
 import com.spring.app.modules.user.services.UserServiceInterface;
@@ -20,37 +23,31 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping(ApplicationConstants.USER_BASE_PATH)
 @Tag(name = "User Management", description = "APIs for managing user accounts")
 @RequiredArgsConstructor
-@Slf4j
 public class UserController {
   private final UserServiceInterface userService;
 
-  @Operation(summary = "Get user profile", description = "Retrieve the profile of a user by their ID")
+  @Operation(summary = "Get user profile", description = "Retrieve the profile of the authenticated user")
   @GetMapping("/me")
-  public ResponseEntity<?> getUserProfile() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    var user = (User) auth.getPrincipal();
-
-    UUID userId = user.getId();
-    log.info("User profile retrieved successfully for userId: {}", userId);
-
-    return userService.getUserProfile(userId);
+  public ResponseEntity<BaseResponse<UserResponseDto>> getUserProfile() {
+    return ResponseBuilder.success("Get user profile successfully",
+        userService.getUserProfile(currentUserId()));
   }
 
   @Operation(summary = "Update user profile", description = "Update the profile of the authenticated user")
   @PutMapping("/me/update")
-  public ResponseEntity<?> updateUserProfile(@Valid @RequestBody UpdateUserDto updateUserDto) {
+  public ResponseEntity<BaseResponse<UserResponseDto>> updateUserProfile(
+      @Valid @RequestBody UpdateUserDto updateUserDto) {
+    return ResponseBuilder.success("Update user profile successfully",
+        userService.updateUserProfile(currentUserId(), updateUserDto));
+  }
+
+  private UUID currentUserId() {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    var user = (User) auth.getPrincipal();
-
-    UUID userId = user.getId();
-    log.info("User profile retrieved successfully for userId: {}", userId);
-
-    return userService.updateUserProfile(userId, updateUserDto);
+    return ((User) auth.getPrincipal()).getId();
   }
 }

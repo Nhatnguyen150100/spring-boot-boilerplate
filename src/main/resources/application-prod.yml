@@ -32,6 +32,9 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
       ssl:
+        # TLS by default for a managed Redis. This is now actually applied, so
+        # docker-compose.prod.yml sets REDIS_SSL_ENABLED=false for its bundled
+        # plain-TCP redis:7-alpine.
         enabled: ${REDIS_SSL_ENABLED:true}
 
   security:
@@ -51,6 +54,12 @@ server:
     key-store: ${SSL_KEYSTORE:}
     key-store-password: ${SSL_KEYSTORE_PASSWORD:}
     key-store-type: ${SSL_KEYSTORE_TYPE:PKCS12}
+  # Tomcat's RemoteIpValve applies X-Forwarded-For / X-Forwarded-Proto, but
+  # ProxyHeadersConfig limits it to the peers listed in TRUSTED_PROXIES
+  # (application.trusted-proxies) - Tomcat's own default would trust every
+  # private-range address. Behind a load balancer, set TRUSTED_PROXIES to its
+  # IP(s); left empty, the headers are ignored and every client is seen as the
+  # load balancer (one shared rate-limit bucket).
   forward-headers-strategy: native
 
 application:

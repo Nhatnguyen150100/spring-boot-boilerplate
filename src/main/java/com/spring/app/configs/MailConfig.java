@@ -1,8 +1,8 @@
 package com.spring.app.configs;
 
+import java.time.Duration;
 import java.util.Properties;
 
-import lombok.NoArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -39,7 +39,15 @@ public class MailConfig {
     props.put("mail.smtp.auth", mailProperties.isSmtpAuth());
     props.put("mail.smtp.starttls.enable", mailProperties.isStartTls());
     props.put("mail.smtp.ssl.enable", mailProperties.isSslEnable());
+    // Without these, jakarta.mail blocks forever on an unresponsive server.
+    props.put("mail.smtp.connectiontimeout", millis(mailProperties.getConnectionTimeout()));
+    props.put("mail.smtp.timeout", millis(mailProperties.getReadTimeout()));
+    props.put("mail.smtp.writetimeout", millis(mailProperties.getWriteTimeout()));
 
     return sender;
+  }
+
+  private static String millis(Duration duration) {
+    return String.valueOf(duration.toMillis());
   }
 }

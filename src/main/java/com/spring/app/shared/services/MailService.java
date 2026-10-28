@@ -1,8 +1,7 @@
 package com.spring.app.shared.services;
 
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.springframework.beans.factory.annotation.Autowired;
+import java.util.concurrent.TimeUnit;
+
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -15,48 +14,36 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Builds and sends application e-mails.
+ *
+ * <p>
+ * Callers run on the bounded {@code emailExecutor} pool (see AsyncConfig),
+ * whose max-size is what caps the number of concurrent SMTP sessions; there is
+ * no second limiter here. SMTP timeouts are set on the JavaMailSender
+ * (MailConfig).
+ * </p>
+ */
 @Service
 @RequiredArgsConstructor
 public class MailService implements MailServiceInterface {
 
+  /** Shown in the e-mail; derived from the TTL the OTP is actually stored with. */
+  static final long OTP_EXPIRY_MINUTES = TimeUnit.SECONDS.toMinutes(OtpEmailService.OTP_EXPIRATION_SECONDS);
+
   private final MailProperties mailProperties;
+  private final JavaMailSender mailSender;
+  private final HtmlTemplateOTPBuilder otpTemplate;
 
-  @Autowired
-  private JavaMailSender mailSender;
-
+  @Override
   public void sendOtpEmail(String to, String otp) throws MessagingException {
-    String htmlContent = HtmlTemplateOTPBuilder.buildOtpHtml(otp);
-
     MimeMessage message = mailSender.createMimeMessage();
     MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
     helper.setTo(to);
     helper.setSubject(String.format("Your OTP Code from %s", mailProperties.getApp()));
-    helper.setText(htmlContent, true);
+    helper.setText(otpTemplate.buildOtpHtml(otp, OTP_EXPIRY_MINUTES), true);
     helper.setFrom(mailProperties.getFrom());
 
     mailSender.send(message);
   }
-
-  public void sendOtpEmail(String to, String subject, String content) throws MessagingException {
-    boolean isHtml = isHtmlContent(content);
-
-    MimeMessage message = mailSender.createMimeMessage();
-    MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-    helper.setTo(to);
-    helper.setSubject(subject);
-    helper.setText(content, isHtml);
-    helper.setFrom(mailProperties.getFrom());
-
-    mailSender.send(message);
-  }
-
-  private boolean isHtmlContent(String content) {
-    try {
-      Document doc = Jsoup.parse(content);
-      return doc.body().children().size() > 0;
-    } catch (Exception e) {
-      return false;
-    }
-  }
-
 }

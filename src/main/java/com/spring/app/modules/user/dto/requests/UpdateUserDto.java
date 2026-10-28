@@ -2,8 +2,11 @@ package com.spring.app.modules.user.dto.requests;
 
 import java.time.LocalDate;
 
+import org.hibernate.validator.constraints.URL;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.spring.app.common.validation.annotations.ValidFullName;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Past;
@@ -15,9 +18,8 @@ import lombok.Builder;
 @Schema(description = "Data Transfer Object for updating user profile information")
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record UpdateUserDto(
-  @Size(min = 2, max = 100, message = "Full name must be between 2 and 100 characters")
-  @Pattern(regexp = "^[a-zA-Z\\s]+$", message = "Full name can only contain letters and spaces")
-  @Schema(description = "Full name of user", example = "John Doe")
+  @ValidFullName
+  @Schema(description = "Full name of user", example = "Nguyễn Văn A")
   String fullName,
 
   @Size(max = 15, message = "Phone number must be less than 15 characters")
@@ -26,6 +28,7 @@ public record UpdateUserDto(
   String phone,
 
   @Size(max = 255, message = "Avatar URL must be less than 255 characters")
+  @URL(regexp = "^https?://.+", message = "Avatar URL must be a valid http(s) URL")
   @Schema(description = "Avatar URL", example = "https://example.com/avatar.jpg")
   String avatarUrl,
 

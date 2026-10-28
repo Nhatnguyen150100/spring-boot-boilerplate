@@ -72,7 +72,12 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      timeout: 60000
+      # Applied by Spring Boot's Lettuce auto-configuration (RedisConfig does not
+      # build its own connection factory). `timeout` bounds every command,
+      # `connect-timeout` the TCP/TLS handshake. Keep them short: rate limiting
+      # fails open on a Redis error, but a hung command blocks the request.
+      timeout: ${REDIS_TIMEOUT:2s}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
@@ -98,9 +103,18 @@ spring:
             user-info-uri: https://www.googleapis.com/oauth2/v3/userinfo
             user-name-attribute: sub
 
-  cloud:
-    compatibility-verifier:
-      enabled: false
+  threads:
+    # Serve each HTTP request (and @Scheduled task) on a virtual thread; almost
+    # every request blocks on JDBC or Redis. Request concurrency is no longer
+    # capped by Tomcat's thread pool, so hikari.maximum-pool-size is now the
+    # real limit on concurrent DB work.
+    # E-mail deliberately does NOT run on virtual threads: jakarta.mail's
+    # SMTPTransport does socket I/O inside synchronized methods, which pins the
+    # carrier thread on Java 21, so slow SMTP servers would stall request
+    # handling. @Async e-mail runs on the bounded platform-thread pool
+    # application.async.email instead (see AsyncConfig).
+    virtual:
+      enabled: true
 
 server:
   port: ${SERVER_PORT:8080}
@@ -134,6 +148,23 @@ application:
   # Restrict OAuth2 sign-in to these e-mail domains. Empty = accept any domain.
   oauth2-allowed-email-domains: ${OAUTH2_ALLOWED_EMAIL_DOMAINS:}
 
+  # Authentication behaviour (configs/properties/AuthProperties.java).
+  auth:
+    # Dev convenience: new accounts start ACTIVE, without the e-mail OTP. Only
+    # honoured while the dev profile is ALSO active; ignored (with a WARN) in
+    # every other profile.
+    skip-email-verification: ${AUTH_SKIP_EMAIL_VERIFICATION:false}
+    # Failed logins allowed per (e-mail, client IP) before further attempts are
+    # refused until the window expires. Successful logins are never counted.
+    login-max-failures: ${AUTH_LOGIN_MAX_FAILURES:5}
+    login-failure-window: ${AUTH_LOGIN_FAILURE_WINDOW:15m}
+    # Wrong guesses allowed per OTP (activation / password reset); the last one
+    # discards the OTP and the user has to request a new one.
+    otp-max-attempts: ${AUTH_OTP_MAX_ATTEMPTS:5}
+    # SPA route, appended to frontend-url, that receives the OAuth2 result in
+    # the URL fragment (#access_token=...&refresh_token=... or #error=...).
+    oauth2-redirect-path: ${AUTH_OAUTH2_REDIRECT_PATH:/oauth2/callback}
+
   security:
     jwt:
       # Dev-only fallback so a fresh clone boots without setup. The prod profile
@@ -145,7 +176,15 @@ application:
 
   file:
     storage:
+      # Files live in <upload-dir>/<userId>/; in-flight uploads in <upload-dir>/.tmp/.
       upload-dir: ${UPLOAD_DIR:uploads}
+      # An upload is accepted only if BOTH its Content-Type (parameters ignored)
+      # and its file-name extension are listed. Comma-separated, case-insensitive.
+      allowed-content-types: ${UPLOAD_ALLOWED_CONTENT_TYPES:image/png,image/jpeg,image/gif,image/webp,application/pdf,text/plain}
+      allowed-extensions: ${UPLOAD_ALLOWED_EXTENSIONS:png,jpg,jpeg,gif,webp,pdf,txt}
+      # Mode of stored files (ls -l form) so e.g. nginx or a backup agent running
+      # as another OS user can read them. Ignored on non-POSIX file systems.
+      file-permissions: ${UPLOAD_FILE_PERMISSIONS:rw-r--r--}
 
   mail:
     app: ${MAIL_APP_NAME:SPRING_APP}
@@ -158,50 +197,58 @@ application:
     start-tls: true
     ssl-enable: ${MAIL_SSL_ENABLED:false}
     default-encoding: UTF-8
+    # SMTP socket timeouts (1ms..5m). Without them a stuck server blocks an
+    # e-mail thread forever.
+    connection-timeout: ${MAIL_CONNECTION_TIMEOUT:10s}
+    read-timeout: ${MAIL_READ_TIMEOUT:10s}
+    write-timeout: ${MAIL_WRITE_TIMEOUT:10s}
 
   cache:
-    default-ttl: ${CACHE_DEFAULT_TTL:30m}
+    # Only immutable DTOs are cached, never JPA entities (see CacheConfig).
+    # One cache today: userProfile (UserResponseDto by user id).
     users-ttl: ${CACHE_USERS_TTL:10m}
-    tokens-ttl: ${CACHE_TOKENS_TTL:5m}
-    cache-null-values: false
 
   async:
     task:
       core-size: ${ASYNC_TASK_CORE_SIZE:5}
       max-size: ${ASYNC_TASK_MAX_SIZE:10}
       queue-capacity: ${ASYNC_TASK_QUEUE_CAPACITY:25}
+    # Platform threads for outgoing e-mail (emailExecutor). max-size is the cap
+    # on concurrent SMTP sessions - keep it at or below your provider's limit.
+    # A ThreadPoolExecutor only grows past core-size once the queue is full,
+    # hence core-size = max-size by default. Sends beyond queue-capacity are
+    # logged and dropped (the user can request a new OTP).
     email:
-      core-size: ${ASYNC_EMAIL_CORE_SIZE:2}
+      core-size: ${ASYNC_EMAIL_CORE_SIZE:5}
       max-size: ${ASYNC_EMAIL_MAX_SIZE:5}
-      queue-capacity: ${ASYNC_EMAIL_QUEUE_CAPACITY:10}
+      queue-capacity: ${ASYNC_EMAIL_QUEUE_CAPACITY:100}
 
   # Quotas are identical in every environment today, so they are declared once
   # here. Override a single bucket in a profile file if that ever changes.
+  # Buckets (see ERateLimitEndpoint): auth = /api/v1/auth/**, upload =
+  # /api/v1/files/**, api = every other /api/**, global = everything else.
+  # Fixed windows counted per client IP in Redis.
   rate-limit:
     global:
       enabled: true
       requests-per-minute: 100
       requests-per-hour: 1000
       requests-per-day: 10000
-      burst-capacity: 200
     auth:
       enabled: true
       requests-per-minute: 10
       requests-per-hour: 100
       requests-per-day: 1000
-      burst-capacity: 20
     upload:
       enabled: true
       requests-per-minute: 5
       requests-per-hour: 50
       requests-per-day: 500
-      burst-capacity: 10
     api:
       enabled: true
       requests-per-minute: 60
       requests-per-hour: 600
       requests-per-day: 6000
-      burst-capacity: 100
 
 springdoc:
   api-docs:
@@ -216,10 +263,16 @@ management:
     web:
       exposure:
         # Keep this minimal. Never expose env/configprops/beans/shutdown.
+        # /actuator/prometheus is ADMIN-only in SecurityConfig.
         include: health,info,prometheus
   endpoint:
     health:
+      # Anonymous callers (load balancer, compose healthcheck) get UP/DOWN
+      # only; component details need an authenticated ADMIN - the same rule
+      # SecurityConfig applies to /actuator/prometheus. The indicators are
+      # Boot's own (db, redis, diskSpace, ping); there is no custom one.
       show-details: when_authorized
+      roles: ADMIN
   metrics:
     tags:
       application: ${APP_NAME:springapp}

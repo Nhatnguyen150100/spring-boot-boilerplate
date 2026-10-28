@@ -7,6 +7,7 @@ import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.modules.auth.dto.response.TokenResponseDto;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -17,7 +18,11 @@ public interface AuthServiceInterface {
 
   ResponseEntity<?> activeAccount(ActiveAccountRequestDto activeAccountRequestDto);
 
-  ResponseEntity<?> login(LoginRequestDto dto);
+  /**
+   * @param clientIp the caller's address ({@code request.getRemoteAddr()});
+   *                 failed attempts are counted per e-mail + IP
+   */
+  ResponseEntity<?> login(LoginRequestDto dto, String clientIp);
 
   ResponseEntity<?> logout(HttpServletRequest request);
 
@@ -26,4 +31,12 @@ public interface AuthServiceInterface {
   ResponseEntity<?> forgotPassword(String email);
 
   ResponseEntity<?> resetPassword(ResetPasswordRequestDto dto);
+
+  /**
+   * Issues an access/refresh pair after a successful OAuth2 login.
+   *
+   * @throws com.spring.app.exceptions.UserNotActiveException when no ACTIVE
+   *         account owns the (normalised) e-mail
+   */
+  TokenResponseDto issueTokensForOAuth2Login(String email);
 }

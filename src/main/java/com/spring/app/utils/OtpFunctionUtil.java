@@ -1,109 +1,124 @@
 package com.spring.app.utils;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Component;
 
 import com.spring.app.shared.interfaces.RedisServiceInterface;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Generates, stores and checks one-time passwords.
+ *
+ * <p>
+ * OTPs are stored in Redis under
+ * {@code otp:<hex SHA-256 of the lower-cased, trimmed e-mail>}: namespaced so
+ * they cannot collide with other keys, case-insensitive like the MySQL e-mail
+ * lookup, and hashed so the address never appears in Redis key listings or in
+ * logs that print the key. Every public method takes the e-mail address, never
+ * a raw Redis key.
+ * </p>
+ */
 @Component
-@Slf4j
 @RequiredArgsConstructor
 public class OtpFunctionUtil {
+
+  public static final int OTP_LENGTH = 6;
+  static final String KEY_PREFIX = "otp:";
+
+  private static final Pattern OTP_PATTERN = Pattern.compile("\\d{" + OTP_LENGTH + "}");
+  private static final SecureRandom RANDOM = new SecureRandom();
 
   private final RedisServiceInterface redisService;
 
   /**
-   * Generates a random OTP (One Time Password) of the specified length.
+   * Generates a random numeric OTP of the given length using a CSPRNG.
    *
-   * @param length The length of the OTP to be generated.
-   * @return A string representing the generated OTP.
+   * @param length number of digits, at least 1
+   * @return the OTP
    */
   public String generateOtp(int length) {
-    StringBuilder otp = new StringBuilder();
+    if (length < 1) {
+      throw new IllegalArgumentException("OTP length must be at least 1");
+    }
+    StringBuilder otp = new StringBuilder(length);
     for (int i = 0; i < length; i++) {
-      otp.append((int) (Math.random() * 10));
+      otp.append(RANDOM.nextInt(10));
     }
     return otp.toString();
   }
 
-  /**
-   * Generates a random OTP (One Time Password) of length 6 digits.
-   * 
-   * @return A string representing the generated OTP.
-   */
+  /** Generates a {@value #OTP_LENGTH}-digit OTP. */
   public String generateOtp() {
-    return generateOtp(6); // Default OTP length is 6 digits
+    return generateOtp(OTP_LENGTH);
+  }
+
+  /** Redis key holding the OTP for {@code email}; contains no part of the address. */
+  static String otpKey(String email) {
+    Objects.requireNonNull(email, "Email must not be null");
+    byte[] normalised = email.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+    return KEY_PREFIX + HexFormat.of().formatHex(sha256().digest(normalised));
+  }
+
+  private static MessageDigest sha256() {
+    try {
+      return MessageDigest.getInstance("SHA-256");
+    } catch (NoSuchAlgorithmException e) {
+      // every Java platform is required to provide SHA-256
+      throw new IllegalStateException("SHA-256 not available", e);
+    }
   }
 
   /**
-   * Stores the OTP in Redis with a specified key and expiration time.
+   * Stores the OTP for {@code email}, replacing any previous one.
    *
-   * @param key                     The key under which the OTP will be stored.
-   * @param otp                     The OTP to be stored.
-   * @param expirationTimeInSeconds The expiration time for the OTP in seconds.
+   * @param email                   the address the OTP was sent to
+   * @param otp                     the OTP
+   * @param expirationTimeInSeconds TTL, must be positive
    */
-  public void storeOtp(String key, String otp, long expirationTimeInSeconds) {
-    Objects.requireNonNull(key, "Key must not be null");
+  public void storeOtp(String email, String otp, long expirationTimeInSeconds) {
     Objects.requireNonNull(otp, "OTP must not be null");
     if (expirationTimeInSeconds <= 0) {
       throw new IllegalArgumentException("Expiration time must be positive");
     }
-    redisService.setValue(key, otp, expirationTimeInSeconds, TimeUnit.SECONDS);
+    redisService.setValue(otpKey(email), otp, expirationTimeInSeconds, TimeUnit.SECONDS);
+  }
+
+  /** @return the stored OTP for {@code email}, or {@code null} if none / expired */
+  public String retrieveOtp(String email) {
+    Object stored = redisService.getValue(otpKey(email));
+    return stored instanceof String otp ? otp : null;
+  }
+
+  /** Deletes the OTP for {@code email}. */
+  public void deleteOtp(String email) {
+    redisService.delete(otpKey(email));
   }
 
   /**
-   * Retrieves the OTP from Redis using the specified key.
-   *
-   * @param key The key under which the OTP is stored.
-   * @return The OTP if found, null otherwise.
+   * Checks {@code otp} against the stored OTP for {@code email}. Malformed input
+   * is rejected before Redis is read; the comparison is constant-time.
    */
-  public String retrieveOtp(String key) {
-    return (String) redisService.getValue(key);
+  public boolean validateOtp(String email, String otp) {
+    if (otp == null || !OTP_PATTERN.matcher(otp).matches()) {
+      return false;
+    }
+    String stored = retrieveOtp(email);
+    return stored != null
+        && MessageDigest.isEqual(stored.getBytes(StandardCharsets.UTF_8), otp.getBytes(StandardCharsets.UTF_8));
   }
 
-  /**
-   * Deletes the OTP from Redis using the specified key.
-   *
-   * @param key The key under which the OTP is stored.
-   */
-  public void deleteOtp(String key) {
-    redisService.delete(key);
-  }
-
-  /**
-   * Validates the OTP against the stored value in Redis.
-   *
-   * @param key The key under which the OTP is stored.
-   * @param otp The OTP to be validated.
-   * @return True if the OTP matches the stored value, false otherwise.
-   */
-  public boolean validateOtp(String key, String otp) {
-    String storedOtp = retrieveOtp(key);
-    return storedOtp != null && storedOtp.equals(otp) && validateOtp(otp);
-  }
-
-
-  /**
-   * Removes the OTP from Redis after successful activation or validation.
-   *
-   * @param key The key under which the OTP is stored.
-   */
-  public void removeOtp(String key) {
-    deleteOtp(key);
-  }
-
-  /**
-   * Validates the OTP against a predefined pattern.
-   *
-   * @param otp The OTP to be validated.
-   * @return True if the OTP is valid, false otherwise.
-   */
-  private boolean validateOtp(String otp) {
-    return otp.matches("\\d{6}");
+  /** Removes the OTP after successful activation / password reset. */
+  public void removeOtp(String email) {
+    deleteOtp(email);
   }
 }

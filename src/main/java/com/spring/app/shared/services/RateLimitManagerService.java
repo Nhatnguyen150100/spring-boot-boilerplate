@@ -17,9 +17,10 @@ public class RateLimitManagerService {
   private final RedisServiceInterface redisService;
   private final RateLimitProperties rateLimitProperties;
 
-  private static final int DEFAULT_REQUESTS_PER_MINUTE = 60;
-  private static final int DEFAULT_REQUESTS_PER_HOUR = 3600;
-  private static final int DEFAULT_REQUESTS_PER_DAY = 86400;
+  // Fixed-window lengths, in seconds, for the three quotas of every bucket.
+  private static final int MINUTE_WINDOW_SECONDS = 60;
+  private static final int HOUR_WINDOW_SECONDS = 3600;
+  private static final int DAY_WINDOW_SECONDS = 86400;
 
   /**
    * Check rate limit for a specific endpoint type
@@ -39,12 +40,12 @@ public class RateLimitManagerService {
       String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
       String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
 
-      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), DEFAULT_REQUESTS_PER_MINUTE) &&
-          checkRateLimit(hourKey, config.getRequestsPerHour(), DEFAULT_REQUESTS_PER_HOUR) &&
-          checkRateLimit(dayKey, config.getRequestsPerDay(), DEFAULT_REQUESTS_PER_DAY);
+      return checkRateLimit(minuteKey, config.getRequestsPerMinute(), MINUTE_WINDOW_SECONDS) &&
+          checkRateLimit(hourKey, config.getRequestsPerHour(), HOUR_WINDOW_SECONDS) &&
+          checkRateLimit(dayKey, config.getRequestsPerDay(), DAY_WINDOW_SECONDS);
 
     } catch (Exception e) {
-      log.error("Error checking rate limit for {} with identifier: {}", endpointType, identifier, e);
+      log.error("Error checking rate limit for {} with identifier: {}", endpointType, maskIdentifier(identifier), e);
       return true; // Allow request on error
     }
   }
@@ -66,69 +67,24 @@ public class RateLimitManagerService {
   }
 
   /**
-   * Get remaining requests for a specific endpoint type
-   * 
-   * @param endpointType Type of endpoint
-   * @param time         Time period (minute, hour, day)
-   * @param identifier   Unique identifier
-   * @return Number of remaining requests for the current time
+   * Hides the local part of an e-mail inside a rate-limit identifier or key
+   * ({@code rate_limit:AUTH:minute:email:john@x.com} becomes
+   * {@code rate_limit:AUTH:minute:email:j***@x.com}). Values without an
+   * {@code @} (IP addresses, hashed identifiers) are returned unchanged. Use it
+   * for every log line that prints an identifier or key.
    */
-  public long getRemainingRequests(ERateLimitEndpoint endpointType, String time, String identifier) {
-    try {
-      if (!"minute".equals(time) && !"hour".equals(time) && !"day".equals(time)) {
-        log.warn("Invalid time period: {}. Defaulting to minute.", time);
-        time = "minute"; // Default to minute if invalid
-      }
-
-      RateLimitProperties.BaseRateLimitConfig config = getConfigForType(endpointType);
-      if (config == null)
-        return -1;
-
-      int maxRequests;
-      if ("minute".equals(time)) {
-        maxRequests = config.getRequestsPerMinute();
-      } else if ("hour".equals(time)) {
-        maxRequests = config.getRequestsPerHour();
-      } else {
-        maxRequests = config.getRequestsPerDay();
-      }
-
-      String timeKey = String.format("rate_limit:%s:%s:%s", endpointType, time, identifier);
-      String currentCount = (String) redisService.getRateLimitValue(timeKey);
-
-      if (currentCount == null) {
-        return maxRequests;
-      }
-
-      int count = Integer.parseInt(currentCount);
-      return Math.max(0, maxRequests - count);
-
-    } catch (Exception e) {
-      log.error("Error getting remaining requests for {} in {} with identifier: {}", endpointType, time, identifier, e);
-      return -1;
+  static String maskIdentifier(String identifier) {
+    if (identifier == null) {
+      return null;
     }
-  }
-
-  /**
-   * Reset rate limit for a specific identifier
-   * 
-   * @param endpointType Type of endpoint
-   * @param identifier   Unique identifier
-   */
-  public void resetRateLimit(String endpointType, String identifier) {
-    try {
-      String minuteKey = String.format("rate_limit:%s:minute:%s", endpointType, identifier);
-      String hourKey = String.format("rate_limit:%s:hour:%s", endpointType, identifier);
-      String dayKey = String.format("rate_limit:%s:day:%s", endpointType, identifier);
-
-      redisService.deleteRateLimitKey(minuteKey);
-      redisService.deleteRateLimitKey(hourKey);
-      redisService.deleteRateLimitKey(dayKey);
-
-      log.info("Rate limit reset for {} with identifier: {}", endpointType, identifier);
-    } catch (Exception e) {
-      log.error("Error resetting rate limit for {} with identifier: {}", endpointType, identifier, e);
+    int at = identifier.indexOf('@');
+    if (at < 0) {
+      return identifier;
     }
+    int localStart = identifier.lastIndexOf(':', at) + 1;
+    String local = identifier.substring(localStart, at);
+    String visible = local.isEmpty() ? "" : local.substring(0, 1);
+    return identifier.substring(0, localStart) + visible + "***" + identifier.substring(at);
   }
 
   private boolean checkRateLimit(String key, int maxRequests, int windowSeconds) {
@@ -138,13 +94,14 @@ public class RateLimitManagerService {
       long count = redisService.incrementRateLimit(key, windowSeconds);
 
       if (count > maxRequests) {
-        log.warn("Rate limit exceeded for key: {} (count: {}, max: {})", key, count, maxRequests);
+        // DEBUG: the resulting 429 is already logged at WARN by GlobalExceptionHandler.
+        log.debug("Rate limit exceeded for key: {} (count: {}, max: {})", maskIdentifier(key), count, maxRequests);
         return false;
       }
       return true;
 
     } catch (Exception e) {
-      log.error("Error checking rate limit for key: {}", key, e);
+      log.error("Error checking rate limit for key: {}", maskIdentifier(key), e);
       return true; // Allow request on error
     }
   }

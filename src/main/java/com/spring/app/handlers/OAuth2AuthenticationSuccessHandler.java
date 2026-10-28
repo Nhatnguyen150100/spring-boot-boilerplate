@@ -2,93 +2,77 @@ package com.spring.app.handlers;
 
 import java.io.IOException;
 
-import org.springframework.http.HttpStatus;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.spring.app.common.response.ResponseBuilder;
-import com.spring.app.configs.properties.JwtProperties;
-import com.spring.app.modules.auth.mapper.AuthMapper;
-import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
-import com.spring.app.modules.auth.repositories.UserRepository;
-import com.spring.app.shared.services.JwtService;
+import com.spring.app.exceptions.UserNotActiveException;
+import com.spring.app.modules.auth.dto.response.TokenResponseDto;
+import com.spring.app.modules.auth.services.AuthServiceInterface;
+import com.spring.app.shared.services.MonitoringService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Issues the app's own tokens after a provider login and redirects the browser
+ * to the frontend with them in the URL fragment. Token issuance (status check,
+ * refresh-token storage) lives in {@link AuthServiceInterface}, not here.
+ */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class OAuth2AuthenticationSuccessHandler implements AuthenticationSuccessHandler {
 
-  private final UserRepository userRepository;
-  private final JwtService jwtService;
-  private final AuthMapper authMapper;
-  private final ObjectMapper objectMapper;
-  private final JwtProperties jwtProperties;
-  private final RefreshTokenRepository refreshTokenRepository;
+  private final AuthServiceInterface authService;
+  private final OAuth2FrontendRedirect frontendRedirect;
+  private final MonitoringService monitoringService;
 
   /**
-   * Handles the event of a successful OAuth2 authentication.
-   *
-   * <p>
-   * This method is invoked when an authentication attempt using OAuth2 is
-   * successful. It retrieves
-   * the OAuth2 user information from the authentication principal and writes the
-   * user's email as a JSON
-   * response. If no user information is available, it responds with an
-   * unauthorized error message.
-   *
-   * @param request        the HTTP request
-   * @param response       the HTTP response
-   * @param authentication the authentication object containing the OAuth2 user
-   *                       details
-   * @throws IOException if an input or output exception occurs
+   * {@code @Lazy} breaks a startup cycle: SecurityConfig needs this handler,
+   * AuthServiceImpl needs the AuthenticationManager, and building that manager
+   * instantiates SecurityConfig ({@code @EnableWebSecurity} implies
+   * {@code @EnableGlobalAuthentication}). The service is resolved on the first
+   * OAuth2 login instead.
    */
+  public OAuth2AuthenticationSuccessHandler(@Lazy AuthServiceInterface authService,
+      OAuth2FrontendRedirect frontendRedirect, MonitoringService monitoringService) {
+    this.authService = authService;
+    this.frontendRedirect = frontendRedirect;
+    this.monitoringService = monitoringService;
+  }
 
   @Override
   public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
       Authentication authentication) throws IOException {
-
-    OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
-    if (oauth2User == null) {
-      response.setStatus(HttpStatus.UNAUTHORIZED.value());
-      response.setContentType("application/json");
-      response.getWriter().write("{\"error\": \"Authentication failed: No user information available\"}");
-      return;
+    String target;
+    try {
+      String email = authentication.getPrincipal() instanceof OAuth2User user
+          ? user.<String>getAttribute("email")
+          : null;
+      TokenResponseDto tokens = authService.issueTokensForOAuth2Login(email);
+      target = frontendRedirect.success(tokens);
+    } catch (UserNotActiveException e) {
+      monitoringService.recordOAuth2Login(false);
+      target = frontendRedirect.failure("account_not_active");
+    } catch (RuntimeException e) {
+      // Types only at ERROR: messages can carry the e-mail or SQL details.
+      log.error("Could not issue tokens after an OAuth2 login: {} (root cause {})",
+          e.getClass().getSimpleName(), NestedExceptionUtils.getMostSpecificCause(e).getClass().getSimpleName());
+      log.debug("OAuth2 token issuance failure", e);
+      monitoringService.recordOAuth2Login(false);
+      target = frontendRedirect.failure("server_error");
     }
 
-    String email = oauth2User.getAttribute("email");
-    if (email == null || email.isBlank()) {
-      response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-      response.setContentType("application/json");
-      response.getWriter().write("{\"error\": \"OAuth2 provider did not return an email\"}");
-      return;
+    // The session only carried the OAuth2 handshake state; the API is stateless.
+    HttpSession session = request.getSession(false);
+    if (session != null) {
+      session.invalidate();
     }
-
-    var user = userRepository.findByEmail(email)
-        .orElseThrow(() -> new IllegalStateException("User not found after OAuth2 authentication"));
-
-    String accessToken = jwtService.generateToken(user);
-    String refreshToken = jwtService.generateRefreshToken(user);
-    var refreshTokenEntity = authMapper.userToRefreshToken(
-        user,
-        refreshToken,
-        java.time.Instant.now().plusMillis(jwtProperties.getRefreshExpiration()));
-    refreshTokenRepository.save(refreshTokenEntity);
-
-    var loginResponse = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
-
-    response.setContentType("application/json");
-    response.setStatus(HttpServletResponse.SC_OK);
-    objectMapper.writeValue(response.getWriter(), ResponseBuilder.success("Login successful", loginResponse));
-
-    log.info("OAuth2 login success for user: {}", email);
+    response.sendRedirect(target);
   }
-
 }

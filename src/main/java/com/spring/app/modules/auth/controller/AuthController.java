@@ -7,8 +7,10 @@ import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResendOtpRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
+import com.spring.app.utils.ClientKeys;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
   private final AuthServiceInterface authService;
+  private final ApplicationProperties applicationProperties;
 
   @Operation(summary = "Register a new user")
   @PostMapping("/register")
@@ -46,8 +49,10 @@ public class AuthController {
 
   @Operation(summary = "Login")
   @PostMapping("/login")
-  public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto) {
-    return authService.login(dto);
+  public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto, HttpServletRequest request) {
+    // The same client identity RateLimitFilter uses (application.trusted-proxies);
+    // IPv6 clients are throttled per /64, so one host cannot rotate addresses.
+    return authService.login(dto, ClientKeys.clientKey(request, applicationProperties.getTrustedProxies()));
   }
 
   @Operation(summary = "Refresh access token")

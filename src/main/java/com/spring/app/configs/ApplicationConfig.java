@@ -19,6 +19,7 @@ import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.UserNotActiveException;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.auth.repositories.UserRepository;
+import com.spring.app.modules.auth.utils.EmailNormalizer;
 
 import lombok.RequiredArgsConstructor;
 
@@ -33,21 +34,23 @@ public class ApplicationConfig {
 
   /**
    * A UserDetailsService that fetches users from the database by email.
-   * 
+   *
+   * <p>
+   * It does NOT check the account status: DaoAuthenticationProvider loads the
+   * user before it compares the password, so rejecting PENDING/INACTIVE here
+   * told an anonymous caller that the account exists. The status is checked
+   * after the password in {@link #authenticationProvider()}, and on every
+   * bearer request in {@code JwtFunctionUtil}. DELETED accounts are treated as
+   * not found.
+   * </p>
+   *
    * @return A UserDetailsService that can be used in a DaoAuthenticationProvider.
    */
   @Bean
   UserDetailsService userDetailsService() {
-    return email -> {
-      var user = userRepository.findByEmail(email)
-          .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
-
-      if (user.getStatus() != EUserStatus.ACTIVE) {
-        throw new UserNotActiveException("User with email " + email + " is not active");
-      }
-
-      return user;
-    };
+    return email -> userRepository.findByEmail(EmailNormalizer.normalize(email))
+        .filter(user -> user.getStatus() != EUserStatus.DELETED)
+        .orElseThrow(() -> new UsernameNotFoundException("Invalid email or password"));
   }
 
   /**
@@ -74,23 +77,23 @@ public class ApplicationConfig {
 
   /**
    * Provides an AuthenticationProvider that uses the UserDetailsService and
-   * PasswordEncoder to authenticate users. This is a DaoAuthenticationProvider
-   * that fetches users from the database by email and uses BCrypt to hash
-   * passwords.
-   * 
+   * PasswordEncoder to authenticate users.
+   *
+   * <p>
+   * {@code hideUserNotFoundExceptions} keeps its default (true): an unknown or
+   * DELETED e-mail fails with the same BadCredentialsException as a wrong
+   * password. The account status is checked only after the password matched.
+   * </p>
+   *
    * @return An AuthenticationProvider that can be used to authenticate users.
    */
   @Bean
   AuthenticationProvider authenticationProvider() {
-    UserDetailsService userDetailsService = userDetailsService();
-    DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
+    DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService());
     authProvider.setPasswordEncoder(passwordEncoder());
-    authProvider.setHideUserNotFoundExceptions(false); // To throw UsernameNotFoundException
     authProvider.setPostAuthenticationChecks(user -> {
-      if (user instanceof User appUser) {
-        if (appUser.getStatus() != EUserStatus.ACTIVE) {
-          throw new UserNotActiveException("User with email " + appUser.getEmail() + " is not active");
-        }
+      if (user instanceof User appUser && appUser.getStatus() != EUserStatus.ACTIVE) {
+        throw new UserNotActiveException("Account is not active");
       }
     });
     return authProvider;

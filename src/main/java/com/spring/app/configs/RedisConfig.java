@@ -2,47 +2,37 @@ package com.spring.app.configs;
 
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.data.redis.connection.RedisPassword;
-import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
-import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Redis templates and the startup reachability check.
+ *
+ * <p>
+ * There is deliberately no {@link RedisConnectionFactory} bean here. Spring
+ * Boot's Lettuce auto-configuration builds it from {@code spring.data.redis.*}
+ * and, unlike the hand-built factory this class used to declare, honours
+ * {@code ssl.enabled}, {@code timeout}, {@code connect-timeout} and pooling.
+ * Boot also contributes the {@code StringRedisTemplate} that
+ * {@code RedisService} uses for rate-limit counters.
+ * </p>
+ */
 @Configuration
 @Slf4j
 public class RedisConfig {
 
   /**
-   * Provides a RedisConnectionFactory bean that establishes connections to a
-   * Redis server.
-   *
-   * @return A LettuceConnectionFactory instance for Redis connections.
-   */
-  @Bean
-  RedisConnectionFactory redisConnectionFactory(RedisProperties redisProperties) {
-    RedisStandaloneConfiguration config = new RedisStandaloneConfiguration();
-    config.setHostName(redisProperties.getHost());
-    config.setPort(redisProperties.getPort());
-    config.setDatabase(redisProperties.getDatabase());
-    if (redisProperties.getPassword() != null && !redisProperties.getPassword().isBlank()) {
-      config.setPassword(RedisPassword.of(redisProperties.getPassword()));
-    }
-    return new LettuceConnectionFactory(config);
-  }
-
-  /**
    * Provides a RedisTemplate bean configured for interaction with Redis
    * using JSON serialization for values and String serialization for keys.
-   * This template is used to perform Redis operations with specified serializers
-   * for keys and values, ensuring data consistency and compatibility.
+   * Its name ({@code redisTemplate}) makes Boot's own
+   * {@code RedisTemplate<Object, Object>} back off.
    *
    * @param connectionFactory The RedisConnectionFactory to establish
    *                          connections with the Redis server.
@@ -87,8 +77,8 @@ public class RedisConfig {
       } catch (Exception e) {
         throw new IllegalStateException(
             "Redis is unreachable. Rate limiting, caching and refresh tokens all depend on it - "
-                + "check REDIS_HOST/REDIS_PORT/REDIS_PASSWORD, or set application.redis.fail-fast=false "
-                + "to start anyway.",
+                + "check REDIS_HOST/REDIS_PORT/REDIS_PASSWORD/REDIS_SSL_ENABLED, or set "
+                + "application.redis.fail-fast=false to start anyway.",
             e);
       }
     };

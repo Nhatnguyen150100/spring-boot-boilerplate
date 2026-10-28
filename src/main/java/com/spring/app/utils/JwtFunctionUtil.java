@@ -1,15 +1,22 @@
 package com.spring.app.utils;
 
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 
+import com.spring.app.enums.EUserStatus;
+import com.spring.app.modules.auth.entities.User;
+import com.spring.app.modules.auth.services.TokenRevocationService;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
+import com.spring.app.shared.interfaces.RedisServiceInterface;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,16 +28,12 @@ public class JwtFunctionUtil {
 
   private final JwtServiceInterface jwtService;
   private final UserDetailsService userDetailsService;
+  private final RedisServiceInterface redisService;
+  private final TokenRevocationService tokenRevocationService;
 
   /**
    * Extracts the JWT token from the Authorization header of the given HTTP
    * request.
-   *
-   * <p>
-   * This method checks if the Authorization header is present and starts with
-   * "Bearer ". If so, it returns the token part of the header by removing the
-   * "Bearer " prefix. If the header is not present or does not start with
-   * the specified prefix, the method returns null.
    *
    * @param request the HTTP request containing the Authorization header
    * @return the extracted JWT token, or null if the header is not present or
@@ -54,28 +57,65 @@ public class JwtFunctionUtil {
   }
 
   /**
-   * Authenticates the user using the given JWT token and username.
+   * Authenticates the request from a bearer access token.
    *
    * <p>
-   * This method attempts to authenticate the user by loading the user details
-   * using the given username, and then checking if the JWT token is valid for the
-   * loaded user details. If the token is valid, a new
-   * {@link UsernamePasswordAuthenticationToken} is created and set in the
-   * security context.
+   * The context is left empty (the request stays anonymous) when the token is
+   * a refresh token, has been blacklisted by logout, belongs to an account
+   * that is not ACTIVE or no longer exists (DELETED), or was issued before the
+   * account's tokens were revoked (password reset, see
+   * {@link TokenRevocationService}). It also stays empty when the blacklist or
+   * the revocation marker cannot be consulted (Redis down): failing open would
+   * let a logged-out or reset token work again, so both checks fail closed.
+   * </p>
    *
-   * @param jwt      the JWT token to use for authentication
-   * @param username the username to use for loading the user details
-   * @param request  the HTTP request containing the authentication details
+   * <p>
+   * This loads the user from the database on every authenticated request. That
+   * is deliberate: a status change (INACTIVE, DELETED) takes effect on the next
+   * request instead of when the token expires.
+   * </p>
+   *
+   * @throws io.jsonwebtoken.JwtException for an expired, forged or malformed token
+   * @throws IllegalArgumentException      for an empty token
    */
-  public void authenticateUser(String jwt, String username, HttpServletRequest request) {
-    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-
-    if (jwtService.isTokenValid(jwt, userDetails)) {
-      UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails, null,
-          userDetails.getAuthorities());
-
-      authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-      SecurityContextHolder.getContext().setAuthentication(authToken);
+  public void authenticateAccessToken(String jwt, HttpServletRequest request) {
+    Claims claims = jwtService.parseClaims(jwt);
+    if (!JwtServiceInterface.ACCESS_TOKEN_TYPE.equals(
+        claims.get(JwtServiceInterface.TOKEN_TYPE_CLAIM, String.class))) {
+      return;
     }
+    try {
+      if (redisService.isTokenBlacklisted(jwt)) {
+        return;
+      }
+    } catch (DataAccessException e) {
+      log.warn("Token blacklist unavailable ({}); treating the request as anonymous", e.getClass().getSimpleName());
+      return;
+    }
+
+    UserDetails userDetails;
+    try {
+      userDetails = userDetailsService.loadUserByUsername(claims.getSubject());
+    } catch (UsernameNotFoundException e) {
+      // The account no longer exists (or is DELETED): no longer a valid bearer.
+      return;
+    }
+    if (!(userDetails instanceof User user) || user.getStatus() != EUserStatus.ACTIVE) {
+      return;
+    }
+    try {
+      if (tokenRevocationService.isRevoked(user.getId(), claims.getIssuedAt())) {
+        return;
+      }
+    } catch (DataAccessException e) {
+      log.warn("Token revocation marker unavailable ({}); treating the request as anonymous",
+          e.getClass().getSimpleName());
+      return;
+    }
+
+    UsernamePasswordAuthenticationToken authToken =
+        new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities());
+    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+    SecurityContextHolder.getContext().setAuthentication(authToken);
   }
 }

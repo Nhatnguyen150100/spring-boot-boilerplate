@@ -29,7 +29,6 @@ spring:
     properties:
       hibernate:
         format_sql: false
-        dialect: org.hibernate.dialect.H2Dialect
 
   flyway:
     # The migrations are MySQL-specific, so they are not replayed against H2.
@@ -39,6 +38,12 @@ application:
   redis:
     # No Redis running during tests; the context must still come up.
     fail-fast: false
+  auth:
+    skip-email-verification: false
+    login-max-failures: 5
+    login-failure-window: 15m
+    otp-max-attempts: 5
+    oauth2-redirect-path: /oauth2/callback
   security:
     jwt:
       # Test-only, and deliberately not the dev fallback from application.yml -
@@ -46,6 +51,7 @@ application:
       secret-key: dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==
       expiration: 86400000
       refresh-expiration: 604800000
+  frontend-url: http://localhost:3000
   cors:
     allowed-origins: http://localhost:3000
   mail:
@@ -56,13 +62,18 @@ application:
     username: test@example.com
     password: test
     ssl-enable: false
+    connection-timeout: 2s
+    read-timeout: 2s
+    write-timeout: 2s
   file:
     storage:
-      upload-dir: uploads-test
+      # Under target/ so `mvn test` never writes into the repository root.
+      upload-dir: target/uploads-test
+      allowed-content-types: [text/plain, application/pdf, image/png]
+      allowed-extensions: [txt, pdf, png]
+      file-permissions: rw-r--r--
   cache:
-    default-ttl: 30m
     users-ttl: 10m
-    tokens-ttl: 5m
   async:
     task:
       core-size: 1
@@ -77,3 +88,8 @@ logging:
   level:
     root: WARN
     com.spring.app: INFO
+
+springdoc:
+  api-docs:
+    # Literal (see header): WebInfrastructureIntegrationTest reads /api-docs.
+    enabled: true

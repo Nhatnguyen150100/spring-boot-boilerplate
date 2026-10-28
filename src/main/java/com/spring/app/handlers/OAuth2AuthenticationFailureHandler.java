@@ -2,52 +2,47 @@ package com.spring.app.handlers;
 
 import java.io.IOException;
 
-import org.springframework.http.HttpStatus;
-
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.spring.app.common.response.ResponseBuilder;
+import com.spring.app.shared.services.MonitoringService;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Sends the browser back to the frontend with an error code in the URL
+ * fragment. The exception message is never echoed: it can carry the e-mail or
+ * provider internals.
+ */
 @Component
 @Slf4j
 @RequiredArgsConstructor
 public class OAuth2AuthenticationFailureHandler implements AuthenticationFailureHandler {
 
-  private final ObjectMapper objectMapper;
+  private final OAuth2FrontendRedirect frontendRedirect;
+  private final MonitoringService monitoringService;
 
-  /**
-   * Handles an authentication exception by writing an appropriate error response.
-   *
-   * <p>
-   * This method writes a JSON response with a status of
-   * {@link HttpStatus#UNAUTHORIZED} and a message indicating that the
-   * authentication failed.
-   *
-   * @param request   the HTTP request
-   * @param response  the HTTP response
-   * @param exception the exception to handle
-   * @throws IOException      if an I/O error occurs
-   * @throws ServletException if an error occurs during the handling process
-   */
   @Override
   public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
-      AuthenticationException exception) throws IOException, ServletException {        
-    var res = ResponseBuilder.badRequest("Authentication failed: " + exception.getMessage());
+      AuthenticationException exception) throws IOException {
+    String errorCode = exception instanceof OAuth2AuthenticationException oauth2
+        ? oauth2.getError().getErrorCode()
+        : null;
+    log.warn("OAuth2 login failed: {} ({})",
+        OAuth2FrontendRedirect.safeErrorCode(errorCode), exception.getClass().getSimpleName());
+    monitoringService.recordOAuth2Login(false);
 
-    int status = res.getStatusCode().value();
-    response.setStatus(status);
-    response.setContentType("application/json");
-
-    response.getWriter().write(objectMapper.writeValueAsString(res.getBody()));
+    // The session only carried the OAuth2 handshake state; the API is stateless.
+    HttpSession session = request.getSession(false);
+    if (session != null) {
+      session.invalidate();
+    }
+    response.sendRedirect(frontendRedirect.failure(errorCode));
   }
-
 }

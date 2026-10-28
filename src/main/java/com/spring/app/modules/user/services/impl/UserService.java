@@ -2,24 +2,28 @@ package com.spring.app.modules.user.services.impl;
 
 import java.util.UUID;
 
-import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import com.spring.app.common.response.ResponseBuilder;
 import com.spring.app.configs.CacheConfig;
 import com.spring.app.exceptions.ResourceNotFoundException;
+import com.spring.app.modules.auth.dto.response.UserResponseDto;
 import com.spring.app.modules.auth.mapper.AuthMapper;
 import com.spring.app.modules.auth.repositories.UserRepository;
 import com.spring.app.modules.user.dto.requests.UpdateUserDto;
 import com.spring.app.modules.user.mapper.UpdateUserMapper;
 import com.spring.app.modules.user.services.UserServiceInterface;
 
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Profile reads are cached as an immutable {@link UserResponseDto} (never the
+ * entity, never a ResponseEntity) under {@link CacheConfig#USER_PROFILE},
+ * keyed by user id. Any write evicts the entry.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -30,32 +34,29 @@ public class UserService implements UserServiceInterface {
   private final UpdateUserMapper updateUserMapper;
 
   @Override
+  @Transactional(readOnly = true)
   @Cacheable(value = CacheConfig.USER_PROFILE, key = "#userId")
-  public ResponseEntity<?> getUserProfile(UUID userId) {
+  public UserResponseDto getUserProfile(UUID userId) {
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
-    var response = userMapper.userToUserResponseDto(user);
-
-    log.info("User profile retrieved successfully for userId: {}", userId);
-    return ResponseBuilder.success("Get user profile successfully", response);
+    log.debug("User profile loaded from the database for userId: {}", userId);
+    return userMapper.userToUserResponseDto(user);
   }
 
   @Override
   @Transactional
-  @CachePut(value = CacheConfig.USER_PROFILE, key = "#userId")
-  public ResponseEntity<?> updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
+  @CacheEvict(value = CacheConfig.USER_PROFILE, key = "#userId")
+  public UserResponseDto updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
     updateUserMapper.updateUserDtoToUser(updateUserDto, user);
 
-    var userRes = userRepository.save(user);
+    // Flush so the auditing fields in the response reflect this update.
+    var saved = userRepository.saveAndFlush(user);
 
-    var response = userMapper.userToUserResponseDto(userRes);
-
-    log.info("User profile updated successfully for userId: {}", userId);
-    return ResponseBuilder.success("Update user profile successfully", response);
+    log.info("User profile updated for userId: {}", userId);
+    return userMapper.userToUserResponseDto(saved);
   }
-
 }

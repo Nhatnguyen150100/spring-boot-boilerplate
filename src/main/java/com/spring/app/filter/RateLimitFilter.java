@@ -1,10 +1,23 @@
 package com.spring.app.filter;
 
-import com.spring.app.constants.WhitelistUrlConstant;
+import java.io.IOException;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.lang.NonNull;
+import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
+import org.springframework.util.StringUtils;
+import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.util.UrlPathHelper;
+
 import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.exceptions.RateLimitExceededException;
+import com.spring.app.shared.services.MonitoringService;
 import com.spring.app.shared.services.RateLimitManagerService;
+import com.spring.app.utils.ClientKeys;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -13,24 +26,22 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.lang.NonNull;
-import org.springframework.stereotype.Component;
-import org.springframework.util.AntPathMatcher;
-import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.servlet.HandlerExceptionResolver;
-
-import java.io.IOException;
-import java.util.List;
-
+/**
+ * Per-client-IP fixed-window rate limiting, run inside the Spring Security
+ * chain (see {@code SecurityConfig}).
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
 
+  private static final String RETRY_AFTER_SECONDS = "60";
+
   private final AntPathMatcher pathMatcher;
   private final RateLimitManagerService rateLimitManagerService;
   private final HandlerExceptionResolver handlerExceptionResolver;
   private final ApplicationProperties applicationProperties;
+  private final MonitoringService monitoringService;
 
   @Override
   protected void doFilterInternal(@NonNull HttpServletRequest request,
@@ -38,77 +49,61 @@ public class RateLimitFilter extends OncePerRequestFilter {
       @NonNull FilterChain filterChain)
       throws ServletException, IOException {
 
-    String clientIp = getClientIpAddress(request);
-    String requestPath = request.getRequestURI();
+    ERateLimitEndpoint bucket = resolveBucket(request);
+    // Same identity as login throttling; IPv6 clients are keyed per /64 (see ClientKeys).
+    String clientIp = ClientKeys.clientKey(request, applicationProperties.getTrustedProxies());
 
+    // Only the rate-limit check is guarded. The downstream chain is called
+    // exactly once, outside any try block: calling it again after a failure
+    // would execute the request (e.g. a POST) a second time.
     try {
-      if (isAuthEndpoint(requestPath)) {
-        rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, clientIp);
-      } else if (isUploadEndpoint(requestPath)) {
-        rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.UPLOAD, clientIp);
-      } else if (isApiEndpoint(requestPath)) {
-        rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.API, clientIp);
-      } else {
-        rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.GLOBAL, clientIp);
-      }
-
-      filterChain.doFilter(request, response);
-
+      rateLimitManagerService.checkRateLimitAndThrow(bucket, clientIp);
     } catch (RateLimitExceededException e) {
-      handlerExceptionResolver.resolveException(request, response, null, e);
+      monitoringService.recordRateLimitRejection(bucket.getEndpointType());
+      // The shortest window; a client over its hourly or daily quota retries in vain, but harmlessly.
+      response.setHeader(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS);
+      if (handlerExceptionResolver.resolveException(request, response, null, e) == null
+          && !response.isCommitted()) {
+        response.sendError(HttpStatus.TOO_MANY_REQUESTS.value());
+      }
       return;
-    } catch (Exception e) {
-      filterChain.doFilter(request, response);
+    } catch (RuntimeException e) {
+      // Fail open: a broken limiter must not take the whole API down.
+      log.error("Rate limit check failed for bucket {}; allowing the request", bucket, e);
     }
+
+    filterChain.doFilter(request, response);
   }
 
-  private boolean isAuthEndpoint(String requestPath) {
-    return isRouteApplyRateLimit(requestPath, WhitelistUrlConstant.AUTH_ENDPOINTS_RATELIMIT);
+  /**
+   * A path that cannot be decoded (e.g. "/api/%zz") falls in GLOBAL: the
+   * request is still throttled, and whatever handles it later rejects it.
+   */
+  private ERateLimitEndpoint resolveBucket(HttpServletRequest request) {
+    String path;
+    try {
+      path = requestPath(request);
+    } catch (IllegalArgumentException e) {
+      log.debug("Undecodable request path; using the {} bucket", ERateLimitEndpoint.GLOBAL);
+      return ERateLimitEndpoint.GLOBAL;
+    }
+    return resolveBucket(path);
   }
 
-  private boolean isUploadEndpoint(String requestPath) {
-    return isRouteApplyRateLimit(requestPath, WhitelistUrlConstant.UPLOAD_ENDPOINTS_RATELIMIT);
+  /**
+   * Decoded, context-relative path without ;params, so that "/api/v1/%61uth/login"
+   * or "/api/v1/auth;x=1/login" cannot dodge the bucket their real target falls in.
+   */
+  private static String requestPath(HttpServletRequest request) {
+    return StringUtils.cleanPath(UrlPathHelper.defaultInstance.getPathWithinApplication(request));
   }
 
-  private boolean isApiEndpoint(String requestPath) {
-    return isRouteApplyRateLimit(requestPath, WhitelistUrlConstant.API_ENDPOINTS_RATELIMIT);
-  }
-
-  private boolean isRouteApplyRateLimit(String requestPath, String[] rateLimitPatterns) {
-    for (String pattern : rateLimitPatterns) {
-      if (pathMatcher.match(pattern, requestPath)) {
-        return true;
+  ERateLimitEndpoint resolveBucket(String requestPath) {
+    for (ERateLimitEndpoint bucket : ERateLimitEndpoint.values()) {
+      if (bucket.matches(requestPath, pathMatcher)) {
+        return bucket;
       }
     }
-    return false;
-  }
-
-  private String getClientIpAddress(HttpServletRequest request) {
-    String remoteAddr = request.getRemoteAddr();
-    if (!isTrustedProxy(remoteAddr)) {
-      return remoteAddr;
-    }
-
-    String xForwardedFor = request.getHeader("X-Forwarded-For");
-    if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
-      return xForwardedFor.split(",")[0].trim();
-    }
-
-    String xRealIp = request.getHeader("X-Real-IP");
-    if (xRealIp != null && !xRealIp.isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
-      return xRealIp;
-    }
-
-    return remoteAddr;
-  }
-
-  private boolean isTrustedProxy(String remoteAddr) {
-    List<String> proxies = applicationProperties.getTrustedProxies();
-    if (proxies == null || proxies.isEmpty()) {
-      return false;
-    }
-    return proxies.stream()
-        .map(String::trim)
-        .anyMatch(remoteAddr::equals);
+    return ERateLimitEndpoint.GLOBAL;
   }
 }

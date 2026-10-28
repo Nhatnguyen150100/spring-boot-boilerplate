@@ -9,28 +9,20 @@ public interface RedisServiceInterface {
 
   void delete(String key);
 
-  boolean hasKey(String key);
-
   void blacklistToken(String token, long expirySeconds);
 
   boolean isTokenBlacklisted(String token);
 
-  void setRateLimitValue(String key, Object value, long duration, TimeUnit unit);
-
   /**
-   * Atomically increments a fixed-window rate-limit counter and returns the new
-   * value. The window expiry is applied only when the counter is first created
-   * (value == 1), so a steady stream of requests does NOT keep sliding the TTL.
+   * Increments a fixed-window rate-limit counter and returns the new value.
+   * INCR and EXPIRE run as one Lua script, so the counter can never be left
+   * without a TTL. The TTL is set when the window opens (and re-armed if the
+   * key somehow has none), and a steady stream of requests does NOT extend it.
    *
    * @param key           the counter key
-   * @param windowSeconds TTL of the window, applied on first increment
-   * @return the counter value after incrementing
+   * @param windowSeconds TTL of the window, applied when the window opens
+   * @return the counter value after incrementing ({@code 0} if Redis returned
+   *         no reply)
    */
   long incrementRateLimit(String key, long windowSeconds);
-
-  Object getRateLimitValue(String key);
-
-  void deleteRateLimitKey(String key);
-
-  boolean hasRateLimitKey(String key);
 }
