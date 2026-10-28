@@ -84,3 +84,8 @@ logging:
   level:
     root: WARN
     com.spring.app: INFO
+
+springdoc:
+  api-docs:
+    # Literal (see header): WebInfrastructureIntegrationTest reads /api-docs.
+    enabled: true

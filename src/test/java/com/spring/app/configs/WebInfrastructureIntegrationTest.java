@@ -1,6 +1,9 @@
 package com.spring.app.configs;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
 import java.util.Map;
@@ -12,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
 
 import com.spring.app.filter.JwtAuthenticatorFilter;
 import com.spring.app.filter.RateLimitFilter;
@@ -28,6 +32,9 @@ class WebInfrastructureIntegrationTest {
   @Autowired
   private ApplicationContext context;
 
+  @Autowired
+  private MockMvc mockMvc;
+
   @Test
   @SuppressWarnings("rawtypes")
   void appFiltersRunOnlyInsideTheSecurityChain() {
@@ -41,5 +48,13 @@ class WebInfrastructureIntegrationTest {
     assertThat(disabledFilters).contains(
         context.getBean(RateLimitFilter.class),
         context.getBean(JwtAuthenticatorFilter.class));
+  }
+
+  @Test
+  void openApiServerIsRelative() throws Exception {
+    mockMvc.perform(get("/api-docs"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.servers.length()").value(1))
+        .andExpect(jsonPath("$.servers[0].url").value("/"));
   }
 }
