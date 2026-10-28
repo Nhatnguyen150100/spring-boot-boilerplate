@@ -56,6 +56,9 @@ application:
     username: test@example.com
     password: test
     ssl-enable: false
+    connection-timeout: 2s
+    read-timeout: 2s
+    write-timeout: 2s
     max-concurrent-sends: 1
   file:
     storage:

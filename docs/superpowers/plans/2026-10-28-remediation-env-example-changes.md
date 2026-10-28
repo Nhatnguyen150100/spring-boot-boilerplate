@@ -51,3 +51,20 @@ ASYNC_EMAIL_QUEUE_CAPACITY=100
 ```
 
 Notes: defaults in `application.yml` are 5 / 5 / 100 (read by `application.async.email.*`).
+
+## P2 Task 3 (SMTP connect/read/write timeouts)
+
+Insert immediately after the last `MAIL_*` line (e.g. `MAIL_SSL_ENABLED`), in the same
+style (commented or not) as the neighbouring `MAIL_*` lines that have a safe default.
+If there are no `MAIL_*` lines, append them at the end under a
+`# --- Mail (application.mail) ---` header:
+
+```
+# SMTP socket timeouts (Spring duration syntax, 1ms..5m).
+MAIL_CONNECTION_TIMEOUT=10s
+MAIL_READ_TIMEOUT=10s
+MAIL_WRITE_TIMEOUT=10s
+```
+
+Notes: defaults in `application.yml` are 10s each (read by
+`application.mail.connection-timeout|read-timeout|write-timeout`).

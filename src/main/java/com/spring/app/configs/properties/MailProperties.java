@@ -1,5 +1,9 @@
 package com.spring.app.configs.properties;
 
+import java.time.Duration;
+
+import org.hibernate.validator.constraints.time.DurationMax;
+import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
@@ -7,6 +11,7 @@ import org.springframework.validation.annotation.Validated;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -56,6 +61,30 @@ public class MailProperties {
   private boolean sslEnable = false;
 
   private String defaultEncoding = "UTF-8";
+
+  /*
+   * SMTP socket timeouts. Without them jakarta.mail waits forever on a stuck
+   * server, and every thread of the bounded emailExecutor pool eventually hangs.
+   * Capped at 5m because jakarta.mail parses them as int milliseconds.
+   */
+
+  /** TCP connect timeout ({@code mail.smtp.connectiontimeout}). */
+  @NotNull(message = "application.mail.connection-timeout is required")
+  @DurationMin(millis = 1, message = "application.mail.connection-timeout must be between 1ms and 5m")
+  @DurationMax(minutes = 5, message = "application.mail.connection-timeout must be between 1ms and 5m")
+  private Duration connectionTimeout = Duration.ofSeconds(10);
+
+  /** Socket read timeout ({@code mail.smtp.timeout}). */
+  @NotNull(message = "application.mail.read-timeout is required")
+  @DurationMin(millis = 1, message = "application.mail.read-timeout must be between 1ms and 5m")
+  @DurationMax(minutes = 5, message = "application.mail.read-timeout must be between 1ms and 5m")
+  private Duration readTimeout = Duration.ofSeconds(10);
+
+  /** Socket write timeout ({@code mail.smtp.writetimeout}). */
+  @NotNull(message = "application.mail.write-timeout is required")
+  @DurationMin(millis = 1, message = "application.mail.write-timeout must be between 1ms and 5m")
+  @DurationMax(minutes = 5, message = "application.mail.write-timeout must be between 1ms and 5m")
+  private Duration writeTimeout = Duration.ofSeconds(10);
 
   /**
    * Upper bound on simultaneous SMTP sends. Providers cap concurrent sessions

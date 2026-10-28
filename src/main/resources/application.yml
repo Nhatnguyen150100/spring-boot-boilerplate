@@ -176,6 +176,11 @@ application:
     start-tls: true
     ssl-enable: ${MAIL_SSL_ENABLED:false}
     default-encoding: UTF-8
+    # SMTP socket timeouts (1ms..5m). Without them a stuck server blocks an
+    # e-mail thread forever.
+    connection-timeout: ${MAIL_CONNECTION_TIMEOUT:10s}
+    read-timeout: ${MAIL_READ_TIMEOUT:10s}
+    write-timeout: ${MAIL_WRITE_TIMEOUT:10s}
     max-concurrent-sends: ${MAIL_MAX_CONCURRENT_SENDS:5}
 
   cache:
