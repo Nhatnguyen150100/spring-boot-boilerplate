@@ -6,7 +6,6 @@ import java.util.function.Function;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import com.spring.app.enums.ERole;
-import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 
 import io.jsonwebtoken.Claims;
@@ -25,8 +24,6 @@ public interface JwtServiceInterface {
   UUID extractUserId(String token);
 
   ERole extractRole(String token);
-
-  EUserStatus extractUserStatus(String token);
 
   <T> T extractClaim(String token, Function<Claims, T> claimsResolver);
 

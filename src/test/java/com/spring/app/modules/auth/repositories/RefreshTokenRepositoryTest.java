@@ -41,16 +41,20 @@ class RefreshTokenRepositoryTest {
     return userRepository.save(User.builder().email(email).password("x").status(status).build());
   }
 
+  /** The column holds SHA-256 hex digests of refresh JWTs (AuthServiceImpl), never the JWTs. */
+  private static final String HASH = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+  private static final String OTHER_HASH = "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752";
+
   @Test
   void revokeIfActiveLetsExactlyOneCallerWin() {
     User user = saveUser("u@example.com", EUserStatus.ACTIVE);
     refreshTokenRepository.save(RefreshToken.builder()
-        .token("tok-1").user(user).expiryDate(Instant.now().plusSeconds(60)).build());
+        .token(HASH).user(user).expiryDate(Instant.now().plusSeconds(60)).build());
 
-    assertThat(refreshTokenRepository.revokeIfActive("tok-1")).isEqualTo(1);
-    assertThat(refreshTokenRepository.revokeIfActive("tok-1")).isZero();
-    assertThat(refreshTokenRepository.revokeIfActive("unknown")).isZero();
-    assertThat(refreshTokenRepository.findByToken("tok-1")).get().extracting(RefreshToken::isRevoked).isEqualTo(true);
+    assertThat(refreshTokenRepository.revokeIfActive(HASH)).isEqualTo(1);
+    assertThat(refreshTokenRepository.revokeIfActive(HASH)).isZero();
+    assertThat(refreshTokenRepository.revokeIfActive(OTHER_HASH)).isZero();
+    assertThat(refreshTokenRepository.findByToken(HASH)).get().extracting(RefreshToken::isRevoked).isEqualTo(true);
   }
 
   @Test

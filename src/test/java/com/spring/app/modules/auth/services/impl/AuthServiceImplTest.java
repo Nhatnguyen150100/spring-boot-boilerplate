@@ -17,14 +17,19 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.List;
+import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
@@ -63,6 +68,7 @@ import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.modules.auth.dto.response.LoginResponseDto;
 import com.spring.app.modules.auth.dto.response.TokenResponseDto;
 import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
@@ -148,14 +154,26 @@ class AuthServiceImplTest {
     when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
   }
 
-  private RefreshToken givenStoredRefreshToken(String token, User owner) {
+  /** What the database holds for a refresh JWT: its SHA-256, never the JWT itself. */
+  static String sha256Hex(String value) throws Exception {
+    return HexFormat.of().formatHex(
+        MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+  }
+
+  /** 254 characters, the longest address RFC 5321 allows (64-char local part). */
+  static String maxLengthEmail() {
+    return "a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(57) + ".com";
+  }
+
+  private RefreshToken givenStoredRefreshToken(String token, User owner) throws Exception {
+    String hash = sha256Hex(token);
     RefreshToken stored = RefreshToken.builder()
-        .token(token)
+        .token(hash)
         .user(owner)
         .expiryDate(Instant.now().plusSeconds(3600))
         .build();
-    when(refreshTokenRepository.findByToken(token)).thenReturn(Optional.of(stored));
-    when(refreshTokenRepository.revokeIfActive(token)).thenReturn(1);
+    when(refreshTokenRepository.findByToken(hash)).thenReturn(Optional.of(stored));
+    when(refreshTokenRepository.revokeIfActive(hash)).thenReturn(1);
     return stored;
   }
 
@@ -354,19 +372,34 @@ class AuthServiceImplTest {
     verify(refreshTokenRepository, never()).revokeAllByUser(any());
   }
 
-  @Test
-  void refreshIsRefusedForANonActiveAccount() {
-    User inactive = user("inactive@example.com", EUserStatus.INACTIVE);
-    String token = jwtService.generateRefreshToken(inactive);
-    givenStoredRefreshToken(token, inactive);
+  @ParameterizedTest
+  @EnumSource(value = EUserStatus.class, names = "ACTIVE", mode = EnumSource.Mode.EXCLUDE)
+  void refreshIsRefusedForANonActiveAccount(EUserStatus status) throws Exception {
+    User owner = user("owner@example.com", status);
+    String token = jwtService.generateRefreshToken(owner);
+    givenStoredRefreshToken(token, owner);
 
     assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
-        .isInstanceOf(InvalidTokenException.class);
+        .isInstanceOf(InvalidTokenException.class)
+        .hasMessage("Invalid or expired refresh token");
+    verify(refreshTokenRepository, never()).revokeIfActive(anyString());
     verify(refreshTokenRepository, never()).save(any());
   }
 
   @Test
-  void refreshIsRefusedForARevokedOrUnknownToken() {
+  void refreshIsRefusedForAnExpiredStoredToken() throws Exception {
+    User active = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateRefreshToken(active);
+    givenStoredRefreshToken(token, active).setExpiryDate(Instant.now().minusSeconds(1));
+
+    assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
+        .isInstanceOf(InvalidTokenException.class)
+        .hasMessage("Invalid or expired refresh token");
+    verify(refreshTokenRepository, never()).save(any());
+  }
+
+  @Test
+  void refreshIsRefusedForARevokedOrUnknownToken() throws Exception {
     User active = user("active@example.com", EUserStatus.ACTIVE);
     String revoked = jwtService.generateRefreshToken(active);
     givenStoredRefreshToken(revoked, active).setRevoked(true);
@@ -440,7 +473,7 @@ class AuthServiceImplTest {
   }
 
   @Test
-  void refreshOutcomesAreCounted() {
+  void refreshOutcomesAreCounted() throws Exception {
     catchThrowable(() -> authService.refreshToken(new RefreshTokenDto("not-a-jwt")));
     User user = user("active@example.com", EUserStatus.ACTIVE);
     String token = jwtService.generateRefreshToken(user);
@@ -574,24 +607,67 @@ class AuthServiceImplTest {
   }
 
   @Test
-  void refreshRotatesTheTokenOnce() {
+  void refreshRotatesTheTokenOnce() throws Exception {
     User user = user("active@example.com", EUserStatus.ACTIVE);
     String token = jwtService.generateRefreshToken(user);
     givenStoredRefreshToken(token, user);
 
     authService.refreshToken(new RefreshTokenDto(token));
 
-    verify(refreshTokenRepository).revokeIfActive(token);
+    verify(refreshTokenRepository).revokeIfActive(sha256Hex(token));
     verify(refreshTokenRepository).save(any(RefreshToken.class));
     verify(transactionManager).commit(any());
   }
 
   @Test
-  void refreshThatLosesTheRotationRaceIsRejected() {
+  void refreshSignsBothTokensBeforeOpeningTheTransaction() throws Exception {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = new JwtService(jwtProperties()).generateRefreshToken(user);
+    givenStoredRefreshToken(token, user);
+
+    authService.refreshToken(new RefreshTokenDto(token));
+
+    InOrder order = inOrder(jwtService, transactionManager, refreshTokenRepository);
+    order.verify(jwtService).generateToken(user);
+    order.verify(jwtService).generateRefreshToken(user);
+    order.verify(transactionManager).getTransaction(any());
+    order.verify(refreshTokenRepository).revokeIfActive(sha256Hex(token));
+    order.verify(refreshTokenRepository).save(any(RefreshToken.class));
+    order.verify(transactionManager).commit(any());
+  }
+
+  // ---- Final review: refresh tokens are stored hashed --------------------------------
+
+  @Test
+  void aMaximumLengthEmailRoundTripsLoginAndRefreshWithAHashedStoredToken() throws Exception {
+    User user = user(maxLengthEmail(), EUserStatus.ACTIVE);
+    assertThat(user.getEmail()).hasSize(254);
+    givenAuthenticationSucceedsFor(user);
+
+    String refreshJwt = ((LoginResponseDto) data(login(user.getEmail(), "Str0ng!Pass"))).refreshToken();
+
+    ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
+    verify(refreshTokenRepository).save(saved.capture());
+    RefreshToken stored = saved.getValue();
+    assertThat(refreshJwt).as("the raw JWT would not fit refresh_tokens.token VARCHAR(512)").hasSizeGreaterThan(512);
+    assertThat(stored.getToken()).hasSizeLessThanOrEqualTo(64).isEqualTo(sha256Hex(refreshJwt));
+
+    when(refreshTokenRepository.findByToken(stored.getToken())).thenReturn(Optional.of(stored));
+    when(refreshTokenRepository.revokeIfActive(stored.getToken())).thenReturn(1);
+
+    TokenResponseDto rotated = (TokenResponseDto) data(authService.refreshToken(new RefreshTokenDto(refreshJwt)));
+
+    assertThat(jwtService.isRefreshToken(rotated.refreshToken())).isTrue();
+    verify(refreshTokenRepository, never()).findByToken(refreshJwt);
+    verify(refreshTokenRepository, never()).revokeIfActive(refreshJwt);
+  }
+
+  @Test
+  void refreshThatLosesTheRotationRaceIsRejected() throws Exception {
     User user = user("active@example.com", EUserStatus.ACTIVE);
     String token = jwtService.generateRefreshToken(user);
     givenStoredRefreshToken(token, user);
-    when(refreshTokenRepository.revokeIfActive(token)).thenReturn(0);
+    when(refreshTokenRepository.revokeIfActive(sha256Hex(token))).thenReturn(0);
 
     assertThatThrownBy(() -> authService.refreshToken(new RefreshTokenDto(token)))
         .isInstanceOf(InvalidTokenException.class);
@@ -680,14 +756,16 @@ class AuthServiceImplTest {
   // ---- Task 9: OAuth2 token issuance -------------------------------------------------
 
   @Test
-  void oauth2LoginIssuesTypedTokensForAnActiveAccount() {
+  void oauth2LoginIssuesTypedTokensForAnActiveAccount() throws Exception {
     givenUser(user("user@example.com", EUserStatus.ACTIVE));
 
     TokenResponseDto tokens = authService.issueTokensForOAuth2Login(" User@Example.com ");
 
     assertThat(jwtService.isAccessToken(tokens.accessToken())).isTrue();
     assertThat(jwtService.isRefreshToken(tokens.refreshToken())).isTrue();
-    verify(refreshTokenRepository).save(any(RefreshToken.class));
+    ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
+    verify(refreshTokenRepository).save(saved.capture());
+    assertThat(saved.getValue().getToken()).isEqualTo(sha256Hex(tokens.refreshToken()));
     assertThat(count("auth.oauth2.login", "result", "success")).isEqualTo(1.0);
   }
 

@@ -217,6 +217,29 @@ class SecurityRulesIntegrationTest {
   }
 
   @Test
+  void aMaximumLengthEmailCanLogInAndRefresh() throws Exception {
+    // 254 characters: the refresh JWT is longer than refresh_tokens.token (512),
+    // so this only works because the column holds the token's SHA-256.
+    String email = "a".repeat(64) + "@" + "b".repeat(63) + "." + "c".repeat(63) + "." + "d".repeat(57) + ".com";
+    save(email, ERole.USER, EUserStatus.ACTIVE);
+
+    MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"email\":\"" + email + "\",\"password\":\"" + PASSWORD + "\"}"))
+        .andExpect(status().isOk())
+        .andReturn();
+    String refreshToken = JsonPath.read(login.getResponse().getContentAsString(), "$.data.refreshToken");
+
+    mockMvc.perform(post("/api/v1/auth/refresh-token")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"refreshToken\":\"" + refreshToken + "\"}"))
+        .andExpect(status().isOk());
+    assertThat(refreshTokenRepository.findAll())
+        .hasSize(2)
+        .allSatisfy(stored -> assertThat(stored.getToken()).hasSize(64));
+  }
+
+  @Test
   void swaggerApiDocsArePublic() throws Exception {
     mockMvc.perform(get("/api-docs")).andExpect(status().isOk());
   }

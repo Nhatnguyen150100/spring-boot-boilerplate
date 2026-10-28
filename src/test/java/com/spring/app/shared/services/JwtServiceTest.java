@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -85,5 +86,17 @@ class JwtServiceTest {
     User user = user("a@example.com");
 
     assertThat(jwtService.generateRefreshToken(user)).isNotEqualTo(jwtService.generateRefreshToken(user));
+  }
+
+  @Test
+  void tokensCarryNoEmailOrStatusClaims() {
+    User user = user("a@example.com");
+
+    for (String token : List.of(jwtService.generateToken(user), jwtService.generateRefreshToken(user))) {
+      assertThat(jwtService.parseClaims(token))
+          .as("the e-mail is already the subject; the status is read from the database")
+          .doesNotContainKeys("email", "status")
+          .containsKeys("id", "role", "sub", "token_type");
+    }
   }
 }

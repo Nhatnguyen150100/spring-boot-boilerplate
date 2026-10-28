@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 
 import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.ERole;
-import com.spring.app.enums.EUserStatus;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 
@@ -62,11 +61,6 @@ public class JwtService implements JwtServiceInterface {
   @Override
   public ERole extractRole(String token) {
     return extractClaim(token, claims -> claims.get("role", ERole.class));
-  }
-
-  @Override
-  public EUserStatus extractUserStatus(String token) {
-    return extractClaim(token, claims -> claims.get("status", EUserStatus.class));
   }
 
   @Override
@@ -128,12 +122,15 @@ public class JwtService implements JwtServiceInterface {
       .compact();
   }
 
+  /**
+   * No {@code email} claim (the subject already is the e-mail) and no
+   * {@code status} claim (JwtFunctionUtil reads the live status from the
+   * database): both only made the token longer.
+   */
   private Map<String, Object> getHashObject(User user) {
     Map<String, Object> extraClaims = new HashMap<>();
     extraClaims.put("id", user.getId());
     extraClaims.put("role", user.getRole());
-    extraClaims.put("email", user.getEmail());
-    extraClaims.put("status", user.getStatus());
     return extraClaims;
   }
 

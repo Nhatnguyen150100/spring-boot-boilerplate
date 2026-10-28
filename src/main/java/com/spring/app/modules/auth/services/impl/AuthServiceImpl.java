@@ -1,6 +1,10 @@
 package com.spring.app.modules.auth.services.impl;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.HexFormat;
 import java.util.Optional;
 
 import org.springframework.core.env.Environment;
@@ -267,7 +271,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
     if (!jwtService.isRefreshToken(presented)) {
       throw rejectRefresh();
     }
-    RefreshToken stored = refreshTokenRepository.findByToken(presented)
+    String presentedHash = hashRefreshToken(presented);
+    RefreshToken stored = refreshTokenRepository.findByToken(presentedHash)
         .filter(token -> !token.isRevoked())
         .filter(token -> token.getExpiryDate() != null && token.getExpiryDate().isAfter(Instant.now()))
         .orElseThrow(this::rejectRefresh);
@@ -278,15 +283,19 @@ public class AuthServiceImpl implements AuthServiceInterface {
       throw rejectRefresh();
     }
 
-    TokenResponseDto tokens = transactionTemplate.execute(status -> {
+    // Signed before the transaction opens, so it only spans the two writes.
+    String accessToken = jwtService.generateToken(user);
+    String refreshToken = jwtService.generateRefreshToken(user);
+    transactionTemplate.executeWithoutResult(status -> {
       // Conditional UPDATE: of two concurrent refreshes with this token, one wins.
-      if (refreshTokenRepository.revokeIfActive(presented) != 1) {
+      if (refreshTokenRepository.revokeIfActive(presentedHash) != 1) {
         throw rejectRefresh();
       }
-      return authMapper.newTokenToTokenResponseDto(jwtService.generateToken(user), createAndStoreRefreshToken(user));
+      storeRefreshToken(user, refreshToken);
     });
     monitoringService.recordTokenRefresh(true);
-    return ResponseBuilder.success("Token refreshed successfully", tokens);
+    return ResponseBuilder.success("Token refreshed successfully",
+        authMapper.newTokenToTokenResponseDto(accessToken, refreshToken));
   }
 
   @Override
@@ -383,11 +392,28 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
   private String createAndStoreRefreshToken(User user) {
     String refreshToken = jwtService.generateRefreshToken(user);
-
-    RefreshToken tokenEntity = authMapper.userToRefreshToken(user, refreshToken,
-        Instant.now().plusMillis(jwtProperties.getRefreshExpiration()));
-
-    refreshTokenRepository.save(tokenEntity);
+    storeRefreshToken(user, refreshToken);
     return refreshToken;
+  }
+
+  /** The client gets the JWT; the database only ever sees its hash. */
+  private void storeRefreshToken(User user, String refreshToken) {
+    refreshTokenRepository.save(authMapper.userToRefreshToken(user, hashRefreshToken(refreshToken),
+        Instant.now().plusMillis(jwtProperties.getRefreshExpiration())));
+  }
+
+  /**
+   * SHA-256 (64 hex chars) of a refresh JWT: the value stored in, and looked
+   * up from, {@code refresh_tokens.token}. The JWT carries the e-mail as its
+   * subject, so for long addresses it outgrows the VARCHAR(512) column; the
+   * hash always fits, and a leaked table holds no usable tokens.
+   */
+  private static String hashRefreshToken(String refreshToken) {
+    try {
+      byte[] digest = MessageDigest.getInstance("SHA-256").digest(refreshToken.getBytes(StandardCharsets.UTF_8));
+      return HexFormat.of().formatHex(digest);
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException("SHA-256 is not available", e);
+    }
   }
 }
