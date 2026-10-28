@@ -22,6 +22,8 @@ import com.spring.app.enums.ERateLimitEndpoint;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
+import com.spring.app.exceptions.RateLimitExceededException;
+import com.spring.app.exceptions.UserNotActiveException;
 import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
 import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
@@ -85,8 +87,14 @@ public class AuthServiceImpl implements AuthServiceInterface {
    * so a single account cannot be brute-forced / email-bombed from many IPs.
    */
   private void throttleByEmail(String email) {
-    if (email != null && !email.isBlank()) {
+    if (email == null || email.isBlank()) {
+      return;
+    }
+    try {
       rateLimitManagerService.checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, "email:" + email.toLowerCase());
+    } catch (RateLimitExceededException e) {
+      monitoringService.recordRateLimitRejection("auth_email");
+      throw e;
     }
   }
 
@@ -149,6 +157,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     Optional<User> pending = userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.PENDING);
     if (!otpValid || pending.isEmpty()) {
+      monitoringService.recordOtpFailure("activation");
       throw new BadRequestException(INVALID_OTP);
     }
 
@@ -173,7 +182,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
       var response = authMapper.userToLoginResponseDto(user, accessToken, refreshToken);
 
-      monitoringService.incrementLoginAttempts();
+      monitoringService.recordLoginSuccess();
       return ResponseBuilder.success("Login successful", response);
 
     } finally {
@@ -199,6 +208,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     refreshTokenRepository.revokeAllByUser(user);
 
     SecurityContextHolder.clearContext();
+    monitoringService.recordLogout();
     log.info("User {} logged out", user.getId());
     return ResponseBuilder.success("User logged out successfully");
   }
@@ -208,17 +218,17 @@ public class AuthServiceImpl implements AuthServiceInterface {
   public ResponseEntity<?> refreshToken(RefreshTokenDto dto) {
     String presented = dto.refreshToken();
     if (!jwtService.isRefreshToken(presented)) {
-      throw new InvalidTokenException(INVALID_REFRESH_TOKEN);
+      throw rejectRefresh();
     }
     RefreshToken oldToken = refreshTokenRepository.findByToken(presented)
         .filter(token -> !token.isRevoked())
         .filter(token -> token.getExpiryDate() != null && token.getExpiryDate().isAfter(Instant.now()))
-        .orElseThrow(() -> new InvalidTokenException(INVALID_REFRESH_TOKEN));
+        .orElseThrow(this::rejectRefresh);
 
     User user = oldToken.getUser();
     // A DELETED / INACTIVE / PENDING account must not keep minting tokens.
     if (user.getStatus() != EUserStatus.ACTIVE) {
-      throw new InvalidTokenException(INVALID_REFRESH_TOKEN);
+      throw rejectRefresh();
     }
 
     oldToken.setRevoked(true);
@@ -228,6 +238,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     String newRefreshToken = createAndStoreRefreshToken(user);
 
     var response = authMapper.newTokenToTokenResponseDto(accessToken, newRefreshToken);
+    monitoringService.recordTokenRefresh(true);
     return ResponseBuilder.success("Token refreshed successfully", response);
   }
 
@@ -251,6 +262,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     Optional<User> active = userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.ACTIVE);
     if (!otpValid || active.isEmpty()) {
+      monitoringService.recordOtpFailure("password_reset");
       throw new BadRequestException(INVALID_OTP);
     }
 
@@ -277,15 +289,23 @@ public class AuthServiceImpl implements AuthServiceInterface {
     return claims;
   }
 
+  private InvalidTokenException rejectRefresh() {
+    monitoringService.recordTokenRefresh(false);
+    return new InvalidTokenException(INVALID_REFRESH_TOKEN);
+  }
+
   private User authenticate(String email, String password) {
     try {
       Authentication authenticated = authenticationManager
           .authenticate(new UsernamePasswordAuthenticationToken(email, password));
       return (User) authenticated.getPrincipal();
+    } catch (UserNotActiveException ex) {
+      // Thrown only after the password matched (ApplicationConfig).
+      monitoringService.recordLoginFailure("not_active");
+      throw ex;
     } catch (AuthenticationException ex) {
       // Unknown e-mail, DELETED account and wrong password look the same.
-      // UserNotActiveException is not an AuthenticationException: it is thrown
-      // only after the password matched and propagates unchanged.
+      monitoringService.recordLoginFailure("bad_credentials");
       throw new BadCredentialsException(INVALID_CREDENTIALS);
     }
   }

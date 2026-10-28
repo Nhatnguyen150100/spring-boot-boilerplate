@@ -2,9 +2,12 @@ package com.spring.app.modules.auth.services.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.longThat;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -43,6 +46,7 @@ import com.spring.app.configs.properties.JwtProperties;
 import com.spring.app.enums.EUserStatus;
 import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ConflictException;
+import com.spring.app.exceptions.RateLimitExceededException;
 import com.spring.app.exceptions.UserNotActiveException;
 import com.spring.app.modules.auth.dto.request.ActiveAccountRequestDto;
 import com.spring.app.modules.auth.dto.request.LoginRequestDto;
@@ -65,6 +69,7 @@ import com.spring.app.shared.services.RateLimitManagerService;
 import com.spring.app.utils.JwtFunctionUtil;
 import com.spring.app.utils.OtpFunctionUtil;
 
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 /**
@@ -162,6 +167,11 @@ class AuthServiceImplTest {
 
   private static Object data(ResponseEntity<?> response) {
     return ((BaseResponse<?>) response.getBody()).getData();
+  }
+
+  private double count(String name, String... tags) {
+    Counter counter = meterRegistry.find(name).tags(tags).counter();
+    return counter == null ? 0 : counter.count();
   }
 
   // ---- Task 2: token types --------------------------------------------------
@@ -378,5 +388,76 @@ class AuthServiceImplTest {
     assertThatThrownBy(() -> login("pending@example.com", "Str0ng!Pass"))
         .isInstanceOf(UserNotActiveException.class)
         .hasMessage("Account is not active");
+  }
+
+  // ---- Task 4: metrics ---------------------------------------------------------
+
+  @Test
+  void successfulLoginIsCountedAsSuccess() {
+    givenAuthenticationSucceedsFor(user("active@example.com", EUserStatus.ACTIVE));
+
+    login("active@example.com", "Str0ng!Pass");
+
+    assertThat(count("auth.login.success")).isEqualTo(1.0);
+    assertThat(count("auth.login.failed")).isZero();
+  }
+
+  @Test
+  void failedLoginsAreCountedWithTheirReason() {
+    when(authenticationManager.authenticate(any()))
+        .thenThrow(new BadCredentialsException("x"))
+        .thenThrow(new UserNotActiveException("Account is not active"));
+
+    catchThrowable(() -> login("a@example.com", "Wr0ng!Pass"));
+    catchThrowable(() -> login("a@example.com", "Str0ng!Pass"));
+
+    assertThat(count("auth.login.failed", "reason", "bad_credentials")).isEqualTo(1.0);
+    assertThat(count("auth.login.failed", "reason", "not_active")).isEqualTo(1.0);
+    assertThat(count("auth.login.success")).isZero();
+  }
+
+  @Test
+  void wrongOtpsAreCountedPerPurpose() {
+    catchThrowable(() -> authService.activeAccount(new ActiveAccountRequestDto("nobody@example.com", "123456")));
+    catchThrowable(() -> authService.resetPassword(
+        new ResetPasswordRequestDto("nobody@example.com", "123456", "NewStr0ng!Pass")));
+
+    assertThat(count("auth.otp.failed", "purpose", "activation")).isEqualTo(1.0);
+    assertThat(count("auth.otp.failed", "purpose", "password_reset")).isEqualTo(1.0);
+  }
+
+  @Test
+  void refreshOutcomesAreCounted() {
+    catchThrowable(() -> authService.refreshToken(new RefreshTokenDto("not-a-jwt")));
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateRefreshToken(user);
+    givenStoredRefreshToken(token, user);
+
+    authService.refreshToken(new RefreshTokenDto(token));
+
+    assertThat(count("auth.token.refresh", "result", "failure")).isEqualTo(1.0);
+    assertThat(count("auth.token.refresh", "result", "success")).isEqualTo(1.0);
+  }
+
+  @Test
+  void logoutIsCounted() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(user);
+    when(jwtFunction.extractTokenFromHeader(any())).thenReturn(token);
+    givenUser(user);
+
+    authService.logout(new MockHttpServletRequest());
+
+    assertThat(count("auth.logout")).isEqualTo(1.0);
+  }
+
+  @Test
+  void perEmailThrottleRejectionIsCounted() {
+    doThrow(new RateLimitExceededException("slow down"))
+        .when(rateLimitManagerService).checkRateLimitAndThrow(any(), anyString());
+
+    assertThatThrownBy(() -> authService.forgotPassword("user@example.com"))
+        .isInstanceOf(RateLimitExceededException.class);
+    assertThat(count("auth.ratelimit.rejected", "bucket", "auth_email")).isEqualTo(1.0);
   }
 }
