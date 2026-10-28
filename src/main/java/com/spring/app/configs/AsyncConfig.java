@@ -45,6 +45,14 @@ public class AsyncConfig {
    */
   static final int EMAIL_DRAIN_PHASE = Integer.MAX_VALUE / 4;
 
+  /**
+   * General-purpose pool ({@code application.async.task.*}). Nothing names it
+   * today; it is kept on purpose because the bean called {@code taskExecutor}
+   * is the default executor Spring picks for any bare {@code @Async} method
+   * (one without an executor qualifier), so a future {@code @Async} gets a
+   * bounded pool instead of Spring's fallback. Do not delete it as unused.
+   * E-mail uses its own {@code emailExecutor} below.
+   */
   @Bean(name = "taskExecutor")
   Executor taskExecutor() {
     AsyncProperties.Pool pool = asyncProperties.getTask();
