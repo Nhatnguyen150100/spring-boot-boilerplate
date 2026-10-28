@@ -3,6 +3,7 @@ package com.spring.app.modules.upload.controller;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import org.springframework.core.io.Resource;
 import org.springframework.http.*;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -32,9 +33,9 @@ public class UploadController {
     return uploadService.storeFile(file);
   }
 
-  @Operation(summary = "Download a file by filename", description = "Downloads a file based on its filename")
+  @Operation(summary = "Download a file by filename", description = "Downloads one of the caller's own files by its filename")
   @GetMapping("/download/{filename:.+}")
-  public ResponseEntity<?> downloadFileByName(
+  public ResponseEntity<Resource> downloadFileByName(
     @Parameter(description = "Filename to download", required = true) @PathVariable String filename) {
     return uploadService.downFile(filename);
   }

@@ -7,85 +7,159 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.core.io.Resource;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.FileStorageProperties;
 import com.spring.app.exceptions.BadRequestException;
-import com.spring.app.modules.upload.services.FileChecksumRegistry;
+import com.spring.app.exceptions.ResourceNotFoundException;
 
 /**
- * Runs against a real temp directory, without a Spring context. The registry
- * gets a direct executor, so the startup index is complete once
- * {@code init()} returns.
+ * Runs against a real temp directory, without a Spring context. The caller's
+ * identity comes from {@link #currentUser}; a test switches it to act as
+ * another user.
  */
 class UploadServiceImplTest {
+
+  private static final String USER_A = "11111111-1111-1111-1111-111111111111";
+  private static final String USER_B = "22222222-2222-2222-2222-222222222222";
 
   @TempDir
   Path dir;
 
+  private final AtomicReference<String> currentUser = new AtomicReference<>(USER_A);
+  private final FileStorageProperties properties = new FileStorageProperties();
+
   @Test
-  void storesNewFile() throws IOException {
+  void storesFileInTheCallersFolder() throws IOException {
     UploadServiceImpl service = newService();
 
     BaseResponse<?> body = body(service.storeFile(file("a.txt", "hello")));
 
+    assertThat(body.getMessage()).isEqualTo("File uploaded successfully");
     assertThat(body.getData()).isEqualTo("a.txt");
-    assertThat(dir.resolve("a.txt")).hasContent("hello");
-    assertNoTempFilesLeft();
+    assertThat(fileOf(USER_A, "a.txt")).hasContent("hello");
+    assertThat(dir.resolve("a.txt")).doesNotExist();
+    assertTempDirEmpty();
   }
 
   @Test
-  void duplicateContentIsNotStoredAgain() throws IOException {
+  void sameFileNameFromTwoUsersDoesNotCollide() {
     UploadServiceImpl service = newService();
-    service.storeFile(file("a.txt", "hello"));
+    service.storeFile(file("report.txt", "from A"));
 
-    BaseResponse<?> body = body(service.storeFile(file("b.txt", "hello")));
+    currentUser.set(USER_B);
+    service.storeFile(file("report.txt", "from B"));
 
-    assertThat(body.getMessage()).isEqualTo("File with identical content already exists");
-    assertThat(body.getData()).isEqualTo("a.txt");
-    assertThat(dir.resolve("b.txt")).doesNotExist();
-    assertNoTempFilesLeft();
+    assertThat(fileOf(USER_A, "report.txt")).hasContent("from A");
+    assertThat(fileOf(USER_B, "report.txt")).hasContent("from B");
   }
 
   @Test
-  void contentCanBeUploadedAgainAfterItsFileIsDeleted() {
+  void userCannotDownloadAnotherUsersFile() {
     UploadServiceImpl service = newService();
-    service.storeFile(file("a.txt", "hello"));
-    service.deleteFile("a.txt");
+    service.storeFile(file("report.txt", "secret"));
 
-    BaseResponse<?> body = body(service.storeFile(file("b.txt", "hello")));
+    currentUser.set(USER_B);
 
-    assertThat(body.getData()).isEqualTo("b.txt");
-    assertThat(dir.resolve("b.txt")).hasContent("hello");
+    assertThatThrownBy(() -> service.downFile("report.txt"))
+      .isInstanceOf(ResourceNotFoundException.class)
+      .hasMessage("File not found");
   }
 
   @Test
-  void overwrittenContentNoLongerCountsAsDuplicate() {
+  void userCannotDeleteAnotherUsersFile() {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("report.txt", "secret"));
+
+    currentUser.set(USER_B);
+
+    assertThatThrownBy(() -> service.deleteFile("report.txt"))
+      .isInstanceOf(ResourceNotFoundException.class)
+      .hasMessage("File not found");
+    assertThat(fileOf(USER_A, "report.txt")).hasContent("secret");
+  }
+
+  @Test
+  void pathsEscapingTheCallersFolderAreRejected() {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("report.txt", "secret"));
+
+    currentUser.set(USER_B);
+
+    assertThatThrownBy(() -> service.downFile("../" + USER_A + "/report.txt"))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file path");
+    assertThatThrownBy(() -> service.deleteFile("../" + USER_A + "/report.txt"))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file path");
+    assertThatThrownBy(() -> service.downFile("../" + UploadServiceImpl.TEMP_DIR_NAME + "/upload-1.tmp"))
+      .isInstanceOf(BadRequestException.class)
+      .hasMessage("Invalid file path");
+    assertThat(fileOf(USER_A, "report.txt")).hasContent("secret");
+  }
+
+  @Test
+  void reuploadWithContentOfAnotherFileIsStoredUnderTheRequestedName() {
     UploadServiceImpl service = newService();
     service.storeFile(file("a.txt", "v1"));
-    service.storeFile(file("a.txt", "v2"));
+    service.storeFile(file("b.txt", "hello"));
 
-    BaseResponse<?> body = body(service.storeFile(file("b.txt", "v1")));
+    BaseResponse<?> body = body(service.storeFile(file("a.txt", "hello")));
 
-    assertThat(body.getData()).isEqualTo("b.txt");
-    assertThat(dir.resolve("a.txt")).hasContent("v2");
+    assertThat(body.getMessage()).isEqualTo("File uploaded successfully");
+    assertThat(body.getData()).isEqualTo("a.txt");
+    assertThat(fileOf(USER_A, "a.txt")).hasContent("hello");
+    assertThat(fileOf(USER_A, "b.txt")).hasContent("hello");
   }
 
   @Test
-  void filesStoredBeforeStartupAreRecognised() throws IOException {
-    Files.writeString(dir.resolve("old.txt"), "hello");
+  void deletingOneOfTwoIdenticalFilesKeepsTheOther() {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("a.txt", "hello"));
+    service.storeFile(file("b.txt", "hello"));
+
+    service.deleteFile("a.txt");
+
+    assertThat(fileOf(USER_A, "a.txt")).doesNotExist();
+    assertThat(fileOf(USER_A, "b.txt")).hasContent("hello");
+  }
+
+  @Test
+  void downloadReturnsTheCallersFile() throws IOException {
+    UploadServiceImpl service = newService();
+    service.storeFile(file("a.txt", "hello"));
+
+    ResponseEntity<Resource> response = service.downFile("a.txt");
+
+    assertThat(response.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+    assertThat(response.getBody().getContentAsString(StandardCharsets.UTF_8)).isEqualTo("hello");
+  }
+
+  @Test
+  void downloadingMissingFileIsNotFound() {
     UploadServiceImpl service = newService();
 
-    BaseResponse<?> body = body(service.storeFile(file("new.txt", "hello")));
+    assertThatThrownBy(() -> service.downFile("missing.txt"))
+      .isInstanceOf(ResourceNotFoundException.class)
+      .hasMessage("File not found");
+  }
 
-    assertThat(body.getData()).isEqualTo("old.txt");
-    assertThat(dir.resolve("new.txt")).doesNotExist();
+  @Test
+  void deletingMissingFileIsNotFound() {
+    UploadServiceImpl service = newService();
+
+    assertThatThrownBy(() -> service.deleteFile("missing.txt"))
+      .isInstanceOf(ResourceNotFoundException.class)
+      .hasMessage("File not found");
   }
 
   @Test
@@ -98,11 +172,14 @@ class UploadServiceImplTest {
   }
 
   private UploadServiceImpl newService() {
-    FileStorageProperties properties = new FileStorageProperties();
     properties.setUploadDir(dir.toString());
-    UploadServiceImpl service = new UploadServiceImpl(properties, new FileChecksumRegistry(Runnable::run));
+    UploadServiceImpl service = new UploadServiceImpl(properties, currentUser::get);
     service.init();
     return service;
+  }
+
+  private Path fileOf(String user, String name) {
+    return dir.resolve(user).resolve(name);
   }
 
   private static MockMultipartFile file(String name, String content) {
@@ -113,10 +190,9 @@ class UploadServiceImplTest {
     return (BaseResponse<?>) response.getBody();
   }
 
-  private void assertNoTempFilesLeft() throws IOException {
-    try (Stream<Path> files = Files.list(dir)) {
-      assertThat(files.map(file -> file.getFileName().toString()))
-        .noneMatch(name -> name.startsWith(".upload-"));
+  private void assertTempDirEmpty() throws IOException {
+    try (Stream<Path> files = Files.list(dir.resolve(UploadServiceImpl.TEMP_DIR_NAME))) {
+      assertThat(files).isEmpty();
     }
   }
 }
