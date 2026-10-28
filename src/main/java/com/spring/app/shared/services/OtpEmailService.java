@@ -17,6 +17,11 @@ public class OtpEmailService {
   private final OtpFunctionUtil otpFunction;
   private final MailServiceInterface mailService;
 
+  /**
+   * Generates and stores a fresh OTP, then mails it. Runs on the bounded
+   * {@code emailExecutor}; never throws - a failure is logged (with the address
+   * masked) and the user can request a new OTP.
+   */
   @Async("emailExecutor")
   public void sendOtpEmailAsync(String email) {
     try {
@@ -24,7 +29,19 @@ public class OtpEmailService {
       otpFunction.storeOtp(email, otp, OTP_EXPIRATION_SECONDS);
       mailService.sendOtpEmail(email, otp);
     } catch (Exception e) {
-      log.error("Failed to send OTP email to: {}", email, e);
+      log.error("Failed to send OTP e-mail to {}", maskEmail(email), e);
     }
+  }
+
+  /** {@code alice@example.com} -> {@code a***@example.com}; anything else -> {@code ***}. */
+  static String maskEmail(String email) {
+    if (email == null) {
+      return "***";
+    }
+    int at = email.indexOf('@');
+    if (at <= 0) {
+      return "***";
+    }
+    return email.charAt(0) + "***" + email.substring(at);
   }
 }
