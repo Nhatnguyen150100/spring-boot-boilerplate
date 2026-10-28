@@ -9,7 +9,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -255,6 +257,51 @@ class UploadServiceImplTest {
       .isEqualTo(PosixFilePermissions.fromString("rw-r-----"));
   }
 
+  @Test
+  void staleTempFilesAreSweptOnStartup() throws IOException {
+    Path tempDir = Files.createDirectories(dir.resolve(UploadServiceImpl.TEMP_DIR_NAME));
+    Path stale = Files.writeString(tempDir.resolve("upload-1.tmp"), "partial");
+    Path inFlight = Files.writeString(tempDir.resolve("upload-2.tmp"), "still writing");
+    Path legacy = Files.writeString(dir.resolve(".upload-3.tmp"), "partial");
+    Path oldUserFile = Files.writeString(Files.createDirectories(dir.resolve(USER_A)).resolve("old.txt"), "keep");
+    makeOlderThanStaleAge(stale);
+    makeOlderThanStaleAge(legacy);
+    makeOlderThanStaleAge(oldUserFile);
+
+    newService();
+
+    assertThat(stale).doesNotExist();
+    assertThat(legacy).doesNotExist();
+    assertThat(inFlight).hasContent("still writing");
+    assertThat(oldUserFile).hasContent("keep");
+  }
+
+  @Test
+  void sweepDoesNotFollowSymlinksOrDescendIntoFolders() throws IOException {
+    Path tempDir = Files.createDirectories(dir.resolve(UploadServiceImpl.TEMP_DIR_NAME));
+    Path outside = Files.writeString(Files.createDirectories(dir.resolve(USER_A)).resolve("keep.txt"), "keep");
+    makeOlderThanStaleAge(outside);
+    Path nestedDir = Files.createDirectories(tempDir.resolve("nested"));
+    Path nested = Files.writeString(nestedDir.resolve("upload-9.tmp"), "nested");
+    makeOlderThanStaleAge(nested);
+    makeOlderThanStaleAge(nestedDir);
+    Path link = tempDir.resolve("upload-link.tmp");
+    Path legacyLink = dir.resolve(".upload-link.tmp");
+    try {
+      Files.createSymbolicLink(link, outside);
+      Files.createSymbolicLink(legacyLink, outside);
+    } catch (UnsupportedOperationException | IOException ex) {
+      assumeTrue(false, "cannot create symbolic links here");
+    }
+
+    newService();
+
+    assertThat(outside).hasContent("keep");
+    assertThat(nested).hasContent("nested");
+    assertThat(Files.isSymbolicLink(link)).isTrue();
+    assertThat(Files.isSymbolicLink(legacyLink)).isTrue();
+  }
+
   private UploadServiceImpl newService() {
     properties.setUploadDir(dir.toString());
     UploadServiceImpl service = new UploadServiceImpl(properties, currentUser::get);
@@ -264,6 +311,11 @@ class UploadServiceImplTest {
 
   private Path fileOf(String user, String name) {
     return dir.resolve(user).resolve(name);
+  }
+
+  private static void makeOlderThanStaleAge(Path file) throws IOException {
+    Instant old = Instant.now().minus(UploadServiceImpl.STALE_TEMP_AGE).minusSeconds(60);
+    Files.setLastModifiedTime(file, FileTime.from(old));
   }
 
   private static boolean isPosix() {

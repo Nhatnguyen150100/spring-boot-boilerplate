@@ -2,14 +2,18 @@ package com.spring.app.modules.upload.services.impl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -62,6 +66,16 @@ public class UploadServiceImpl implements UploadServiceInterface {
    */
   static final String TEMP_DIR_NAME = ".tmp";
 
+  /**
+   * At startup, temp files at least this old are leftovers of a crash. Younger
+   * ones are kept, because on a shared volume they can be another instance's
+   * in-flight upload.
+   */
+  static final Duration STALE_TEMP_AGE = Duration.ofHours(1);
+
+  /** Temp files written straight into the upload root by earlier versions. */
+  private static final String LEGACY_TEMP_GLOB = ".upload-*.tmp";
+
   private final FileStorageProperties fileStorageProperties;
   private final UploadOwnerProvider uploadOwnerProvider;
 
@@ -87,13 +101,47 @@ public class UploadServiceImpl implements UploadServiceInterface {
       .collect(Collectors.toUnmodifiableSet());
     filePermissions = PosixFilePermissions.fromString(fileStorageProperties.getFilePermissions());
     posix = uploadRoot.getFileSystem().supportedFileAttributeViews().contains("posix");
-    log.info("Upload folder initialized at: {}", uploadRoot);
+    int removed = sweepStaleTempFiles();
+    log.info("Upload folder initialized at: {} (removed {} stale temp file(s))", uploadRoot, removed);
   }
 
   private static Set<String> normalize(List<String> values) {
     return values.stream()
       .map(value -> value.trim().toLowerCase(Locale.ROOT))
       .collect(Collectors.toUnmodifiableSet());
+  }
+
+  private int sweepStaleTempFiles() {
+    Instant cutoff = Instant.now().minus(STALE_TEMP_AGE);
+    return sweep(tempDir, "*", cutoff) + sweep(uploadRoot, LEGACY_TEMP_GLOB, cutoff);
+  }
+
+  /**
+   * Deletes regular files directly in {@code dir} matching {@code glob} last
+   * modified before {@code cutoff}. Never follows symbolic links and never
+   * descends into sub-folders. Failures are logged, not thrown: a missing
+   * folder or a file that vanishes mid-sweep must not stop the application
+   * from starting.
+   */
+  private static int sweep(Path dir, String glob, Instant cutoff) {
+    int removed = 0;
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir, glob)) {
+      for (Path entry : entries) {
+        try {
+          if (Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)
+            && Files.getLastModifiedTime(entry, LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(cutoff)
+            && Files.deleteIfExists(entry)) {
+            removed++;
+          }
+        } catch (IOException ex) {
+          log.warn("Could not sweep stale temp upload {}: {}", entry, ex.getMessage());
+        }
+      }
+    } catch (IOException | RuntimeException ex) {
+      // DirectoryIteratorException (a RuntimeException) can surface mid-iteration.
+      log.warn("Could not sweep stale temp uploads in {}: {}", dir, ex.getMessage());
+    }
+    return removed;
   }
 
   @Override
