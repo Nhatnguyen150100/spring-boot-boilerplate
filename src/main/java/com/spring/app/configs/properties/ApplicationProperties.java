@@ -8,7 +8,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 /**
@@ -33,7 +35,14 @@ public class ApplicationProperties {
   @Valid
   private Redis redis = new Redis();
 
-  /** Public base URL of the frontend, used to build links in outgoing e-mails. */
+  /**
+   * Public base URL of the frontend. The OAuth2 login redirects the browser
+   * here with the issued tokens (or an error) in the URL fragment, so it must
+   * be an absolute http(s) URL.
+   */
+  @NotBlank(message = "application.frontend-url must not be blank")
+  @Pattern(regexp = "^https?://\\S+$",
+      message = "application.frontend-url must be an absolute http:// or https:// URL")
   private String frontendUrl = "http://localhost:3000";
 
   /**
@@ -53,9 +62,13 @@ public class ApplicationProperties {
   @Data
   public static class Cors {
 
-    /** Origins allowed to call the API. Must not be empty. */
+    /**
+     * Origins allowed to call the API. Must not be empty and must not contain
+     * {@code *}: a wildcard would let every site call the API from a browser.
+     */
     @NotEmpty(message = "application.cors.allowed-origins must contain at least one origin")
-    private List<String> allowedOrigins = new ArrayList<>();
+    private List<@Pattern(regexp = "[^*]*",
+        message = "application.cors.allowed-origins must not contain '*' (list the exact origins)") String> allowedOrigins = new ArrayList<>();
 
     /** How long a browser may cache the preflight response, in seconds. */
     private long maxAgeSeconds = 3600;

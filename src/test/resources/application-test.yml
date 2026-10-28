@@ -52,6 +52,7 @@ application:
       secret-key: dGVzdC1vbmx5LXNlY3JldC1uZXZlci11c2VkLW91dHNpZGUtdW5pdC10ZXN0cw==
       expiration: 86400000
       refresh-expiration: 604800000
+  frontend-url: http://localhost:3000
   cors:
     allowed-origins: http://localhost:3000
   mail:
