@@ -1,5 +1,6 @@
 # =============================================================================
-#  Remote-debug overlay (JDWP on localhost:5005), on top of base + dev:
+#  Remote-debug overlay (JDWP on localhost:5005). Use it ONLY together with the
+#  dev overlay, never on top of the prod-profile base stack alone:
 #
 #    docker compose -f docker-compose.yml -f docker-compose.dev.yml \
 #                   -f docker-compose.debug.yml up --build

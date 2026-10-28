@@ -1,7 +1,14 @@
 # =============================================================================
 #  Local development overlay. Runs the app with the dev profile:
 #
+#    MYSQL_ROOT_PASSWORD=dev-root DB_USERNAME=springapp DB_PASSWORD=dev-pass \
+#    REDIS_PASSWORD=dev-redis \
 #    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+#  (or put the same four variables in .env). The base file has no credential
+#  defaults, and its ${VAR:?} checks are evaluated per file before overlays
+#  merge, so this overlay cannot supply them itself; they must come from the
+#  environment or .env.
 #
 #  Never use this on a shared or internet-facing host: the dev profile falls
 #  back to a committed JWT secret and exposes Swagger UI.

@@ -59,6 +59,9 @@ services:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_prod_data:/data
+    # Also read by the healthcheck below.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     command: 
       - redis-server
       - --appendonly yes
@@ -66,7 +69,9 @@ services:
       - --maxmemory 512mb
       - --maxmemory-policy allkeys-lru
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      # Authenticate and require PONG: a bare ping exits 0 even on NOAUTH.
+      # REDISCLI_AUTH keeps the password off the process list.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
