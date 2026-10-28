@@ -54,4 +54,16 @@ class MailPropertiesTest {
               .hasMessageContaining("application.mail.read-timeout must be between 1ms and 5m");
         });
   }
+
+  @Test
+  void maxConcurrentSendsIsNoLongerAKey() {
+    // Concurrency is bounded by application.async.email.max-size now; strict
+    // binding must reject the old key instead of silently ignoring it.
+    runner.withPropertyValues("application.mail.max-concurrent-sends=5")
+        .run(context -> {
+          assertThat(context).hasFailed();
+          assertThat(context.getStartupFailure()).rootCause()
+              .hasMessageContaining("application.mail.max-concurrent-sends");
+        });
+  }
 }

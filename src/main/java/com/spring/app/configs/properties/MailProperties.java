@@ -85,11 +85,4 @@ public class MailProperties {
   @DurationMin(millis = 1, message = "application.mail.write-timeout must be between 1ms and 5m")
   @DurationMax(minutes = 5, message = "application.mail.write-timeout must be between 1ms and 5m")
   private Duration writeTimeout = Duration.ofSeconds(10);
-
-  /**
-   * Upper bound on simultaneous SMTP sends. Providers cap concurrent sessions
-   * per account, so extra sends wait for a free slot instead of failing.
-   */
-  @Min(value = 1, message = "application.mail.max-concurrent-sends must be >= 1")
-  private int maxConcurrentSends = 5;
 }

@@ -59,7 +59,6 @@ application:
     connection-timeout: 2s
     read-timeout: 2s
     write-timeout: 2s
-    max-concurrent-sends: 1
   file:
     storage:
       upload-dir: uploads-test

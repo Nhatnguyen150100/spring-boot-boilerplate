@@ -68,3 +68,10 @@ MAIL_WRITE_TIMEOUT=10s
 
 Notes: defaults in `application.yml` are 10s each (read by
 `application.mail.connection-timeout|read-timeout|write-timeout`).
+
+## P2 Task 4 (remove send semaphore / `max-concurrent-sends`)
+
+No change expected: `MAIL_MAX_CONCURRENT_SENDS` was never documented in `.env.example`.
+If a line for it exists anyway, delete it (`application.mail.max-concurrent-sends` no
+longer exists and `MailProperties` binds strictly). Concurrency is now capped by
+`ASYNC_EMAIL_MAX_SIZE`.

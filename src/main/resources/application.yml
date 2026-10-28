@@ -181,7 +181,6 @@ application:
     connection-timeout: ${MAIL_CONNECTION_TIMEOUT:10s}
     read-timeout: ${MAIL_READ_TIMEOUT:10s}
     write-timeout: ${MAIL_WRITE_TIMEOUT:10s}
-    max-concurrent-sends: ${MAIL_MAX_CONCURRENT_SENDS:5}
 
   cache:
     # Only immutable DTOs are cached, never JPA entities (see CacheConfig).
