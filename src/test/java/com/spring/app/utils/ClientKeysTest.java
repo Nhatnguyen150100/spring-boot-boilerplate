@@ -41,8 +41,23 @@ class ClientKeysTest {
     assertThat(ClientKeys.clientKey("not-an-ip")).isEqualTo("not-an-ip");
     assertThat(ClientKeys.clientKey("zz::gg")).isEqualTo("zz::gg");
     assertThat(ClientKeys.clientKey("1:2:3")).isEqualTo("1:2:3");
+    assertThat(ClientKeys.clientKey(".1:2")).isEqualTo(".1:2");
+    assertThat(ClientKeys.clientKey(".:")).isEqualTo(".:");
     assertThat(ClientKeys.clientKey("")).isEmpty();
     assertThat(ClientKeys.clientKey("  ")).isEqualTo("  ");
     assertThat(ClientKeys.clientKey(null)).isNull();
+  }
+
+  @Test
+  void isIpLiteralAcceptsOnlyAddresses() {
+    assertThat(ClientKeys.isIpLiteral("198.51.100.7")).isTrue();
+    assertThat(ClientKeys.isIpLiteral("2001:db8::1")).isTrue();
+    assertThat(ClientKeys.isIpLiteral("::ffff:1.2.3.4")).isTrue();
+    assertThat(ClientKeys.isIpLiteral("999.1.1.1")).isFalse();
+    assertThat(ClientKeys.isIpLiteral("example.com")).isFalse();
+    assertThat(ClientKeys.isIpLiteral(".1:2")).isFalse();
+    assertThat(ClientKeys.isIpLiteral("1.2.3.4:80")).isFalse();
+    assertThat(ClientKeys.isIpLiteral(" ")).isFalse();
+    assertThat(ClientKeys.isIpLiteral(null)).isFalse();
   }
 }

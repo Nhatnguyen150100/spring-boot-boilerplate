@@ -16,7 +16,8 @@ import lombok.Getter;
  * first bucket whose pattern matches the request path. AUTH and UPLOAD must
  * therefore stay before API (they are also under {@code /api/**}), and GLOBAL,
  * which has no pattern, is the fallback for everything else (actuator,
- * Swagger, {@code /oauth2/**}, ...).
+ * Swagger, ...). The OAuth2 login and callback endpoints live under
+ * {@code /api/v1/auth} and so use AUTH.
  * </p>
  */
 @Getter

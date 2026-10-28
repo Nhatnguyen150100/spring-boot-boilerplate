@@ -1,6 +1,7 @@
 package com.spring.app.filter;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.lang.NonNull;
@@ -9,6 +10,7 @@ import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.util.UrlPathHelper;
 
 import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
@@ -26,8 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Per-client-IP fixed-window rate limiting, run inside the Spring Security
- * chain (see {@code SecurityConfig}). Servlet auto-registration is disabled in
- * {@code FilterRegistrationConfig}.
+ * chain (see {@code SecurityConfig}).
  */
 @Component
 @RequiredArgsConstructor
@@ -46,7 +47,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
       @NonNull FilterChain filterChain)
       throws ServletException, IOException {
 
-    ERateLimitEndpoint bucket = resolveBucket(request.getRequestURI());
+    ERateLimitEndpoint bucket = resolveBucket(requestPath(request));
     // IPv6 clients are throttled per /64, not per address (see ClientKeys).
     String clientIp = ClientKeys.clientKey(getClientIpAddress(request));
 
@@ -65,6 +66,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     filterChain.doFilter(request, response);
+  }
+
+  /**
+   * Decoded, context-relative path without ;params, so that "/api/v1/%61uth/login"
+   * or "/api/v1/auth;x=1/login" cannot dodge the bucket their real target falls in.
+   */
+  private static String requestPath(HttpServletRequest request) {
+    return StringUtils.cleanPath(UrlPathHelper.defaultInstance.getPathWithinApplication(request));
   }
 
   ERateLimitEndpoint resolveBucket(String requestPath) {
@@ -88,12 +97,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
       return remoteAddr;
     }
 
-    String xForwardedFor = request.getHeader("X-Forwarded-For");
+    // A proxy may append its own header line instead of extending the first
+    // one, so every line counts and the client-supplied ones come first.
+    String xForwardedFor = String.join(",", Collections.list(request.getHeaders("X-Forwarded-For")));
     if (StringUtils.hasText(xForwardedFor)) {
       String[] hops = xForwardedFor.split(",");
       for (int i = hops.length - 1; i >= 0; i--) {
         String hop = hops[i].trim();
-        if (hop.isEmpty() || "unknown".equalsIgnoreCase(hop)) {
+        if (!ClientKeys.isIpLiteral(hop)) {
+          // empty, "unknown", a name or garbage: we cannot tell where the client is
           return remoteAddr;
         }
         if (!isTrustedProxy(hop)) {

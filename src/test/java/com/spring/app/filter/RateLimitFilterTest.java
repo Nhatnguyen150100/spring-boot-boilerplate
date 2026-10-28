@@ -119,7 +119,11 @@ class RateLimitFilterTest {
   @CsvSource({
       "/api/v1/auth/login, AUTH",
       "/api/v1/auth/oauth2/authorization/google, AUTH",
+      "/api/v1/auth/oauth2/code/google, AUTH",
+      "/api/v1/%61uth/login, AUTH",
+      "/api/v1/auth;x=1/login, AUTH",
       "/api/v1/files/upload, UPLOAD",
+      "/api/v1/fil%65s/upload, UPLOAD",
       "/api/v1/users/me, API",
       "/api/v2/anything, API",
       "/actuator/health, GLOBAL",
@@ -158,6 +162,29 @@ class RateLimitFilterTest {
     filter.doFilter(request, new MockHttpServletResponse(), filterChain);
 
     verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "203.0.113.9");
+  }
+
+  @Test
+  void forwardedForOnSeparateHeaderLinesIsWalkedAcrossAllLines() throws Exception {
+    applicationProperties.setTrustedProxies(List.of("10.0.0.1"));
+    MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
+    request.addHeader("X-Forwarded-For", "6.6.6.6");     // attacker-supplied line
+    request.addHeader("X-Forwarded-For", "203.0.113.9"); // line added by our proxy
+
+    filter.doFilter(request, new MockHttpServletResponse(), filterChain);
+
+    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "203.0.113.9");
+  }
+
+  @Test
+  void nonIpForwardedHopFallsBackToThePeer() throws Exception {
+    applicationProperties.setTrustedProxies(List.of("10.0.0.1"));
+    MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
+    request.addHeader("X-Forwarded-For", "203.0.113.9, evil.example.com");
+
+    filter.doFilter(request, new MockHttpServletResponse(), filterChain);
+
+    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "10.0.0.1");
   }
 
   @Test

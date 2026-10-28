@@ -17,10 +17,27 @@ import java.util.regex.Pattern;
  */
 public final class ClientKeys {
 
-  /** Only characters that can appear in an IP literal, so no name is ever resolved. */
-  private static final Pattern IP_LITERAL = Pattern.compile("[0-9a-fA-F:.]+");
+  /**
+   * Only characters that can appear in an IP literal, and it must start with a
+   * hex digit or ':' so the JDK never treats the input as a host name to resolve
+   * (".1:2" would be looked up in DNS).
+   */
+  private static final Pattern IP_LITERAL = Pattern.compile("[0-9a-fA-F:][0-9a-fA-F:.]*");
+  private static final Pattern IPV4 = Pattern.compile("(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}");
 
   private ClientKeys() {
+  }
+
+  /** @return true if {@code value} is a bare IPv4 or IPv6 literal (brackets / zone id tolerated for IPv6). */
+  public static boolean isIpLiteral(String value) {
+    if (value == null || value.isBlank()) {
+      return false;
+    }
+    String candidate = value.trim();
+    if (IPV4.matcher(candidate).matches()) {
+      return true;
+    }
+    return parseIpv6(candidate) != null;
   }
 
   /**
@@ -33,22 +50,8 @@ public final class ClientKeys {
     if (ip == null || ip.isBlank()) {
       return ip;
     }
-    String literal = ip.trim();
-    if (literal.startsWith("[") && literal.endsWith("]")) {
-      literal = literal.substring(1, literal.length() - 1);
-    }
-    int zone = literal.indexOf('%');
-    if (zone >= 0) {
-      literal = literal.substring(0, zone);
-    }
-    if (literal.indexOf(':') < 0 || !IP_LITERAL.matcher(literal).matches()) {
-      return ip;
-    }
-
-    InetAddress address;
-    try {
-      address = InetAddress.getByName(literal);
-    } catch (UnknownHostException e) {
+    InetAddress address = parseIpv6(ip.trim());
+    if (address == null) {
       return ip;
     }
     if (!(address instanceof Inet6Address)) {
@@ -63,5 +66,25 @@ public final class ClientKeys {
       key.append(Integer.toHexString(value)).append(':');
     }
     return key.append(":/64").toString();
+  }
+
+  /** @return the parsed address if {@code value} is an IPv6 literal (never resolves names), else null */
+  private static InetAddress parseIpv6(String value) {
+    String literal = value;
+    if (literal.startsWith("[") && literal.endsWith("]")) {
+      literal = literal.substring(1, literal.length() - 1);
+    }
+    int zone = literal.indexOf('%');
+    if (zone >= 0) {
+      literal = literal.substring(0, zone);
+    }
+    if (literal.indexOf(':') < 0 || !IP_LITERAL.matcher(literal).matches()) {
+      return null;
+    }
+    try {
+      return InetAddress.getByName(literal);
+    } catch (UnknownHostException e) {
+      return null;
+    }
   }
 }
