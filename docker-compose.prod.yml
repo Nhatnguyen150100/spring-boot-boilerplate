@@ -107,8 +107,10 @@ services:
       - UPLOAD_DIR=/app/uploads
       - LOG_PATH=/var/log/springapp
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/var/log/springapp
+      # Named volumes inherit the image's ownership (UID 10001); host bind
+      # mounts would be root-owned and unwritable for the non-root app user.
+      - uploads_prod_data:/app/uploads
+      - logs_prod_data:/var/log/springapp
     depends_on:
       mysql:
         condition: service_healthy
@@ -116,7 +118,8 @@ services:
         condition: service_healthy
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      # BusyBox wget ships with the Alpine JRE image; curl does not.
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -152,4 +155,8 @@ volumes:
     driver: local
   redis_prod_data:
     driver: local
+  uploads_prod_data:
+    name: springapp_uploads_prod_data
+  logs_prod_data:
+    name: springapp_logs_prod_data
 

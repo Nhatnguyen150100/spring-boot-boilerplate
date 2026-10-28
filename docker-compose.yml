@@ -1,9 +1,13 @@
 # =============================================================================
-#  Local development stack.
+#  Base stack: MySQL + Redis + the app.
 #
-#  Values come from .env (see .env.example). Compose uses that same file both
-#  for ${...} interpolation here and, via env_file, for the app container - so
-#  there is exactly one place to change a value.
+#  The app runs the PROD profile here, so it needs a .env with the prod
+#  variables (see .env.example). Local development adds the dev overlay:
+#
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+#  Values come from .env. Compose uses that same file both for ${...}
+#  interpolation here and, via env_file, for the app container.
 # =============================================================================
 
 services:
@@ -49,9 +53,15 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    # An empty --requirepass makes redis-server refuse to start, so the
+    # password is mandatory: Compose aborts with this message if .env lacks it.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # A bare `redis-cli ping` exits 0 even on a NOAUTH error, so it would
+      # report healthy with a wrong password. Authenticate and require PONG.
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -75,16 +85,31 @@ services:
       - path: .env
         required: false
     environment:
-      # Only the values that MUST differ inside the Compose network.
-      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      # Explicit profile. A SPRING_PROFILES_ACTIVE=dev in .env (handy for
+      # `mvn spring-boot:run`) must not silently turn this stack into dev;
+      # use docker-compose.dev.yml for that.
+      - SPRING_PROFILES_ACTIVE=prod
+      # Values that MUST differ inside the Compose network, or must equal what
+      # the mysql/redis services above were started with.
       - DB_HOST=mysql
       - DB_PORT=3306
+      - DB_NAME=${DB_NAME:-db_test_spring}
+      - DB_USERNAME=${DB_USERNAME:-springapp}
+      - DB_PASSWORD=${DB_PASSWORD:-springapp}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      # The redis service above speaks plain TCP.
+      - REDIS_SSL_ENABLED=false
       - UPLOAD_DIR=/app/uploads
+      # The prod profile defaults to /var/log/springapp; point it at the
+      # volume mounted below.
+      - LOG_PATH=/app/logs
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
+      # Named volumes: they inherit the image's ownership (UID 10001), so the
+      # non-root app user can write to them. A host bind mount would be root-owned.
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
@@ -92,7 +117,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      # BusyBox wget ships with the Alpine JRE image; curl does not.
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -115,3 +141,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
+  uploads_data:
+    name: springapp_uploads_data
+  logs_data:
+    name: springapp_logs_data

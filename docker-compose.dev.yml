@@ -1,0 +1,16 @@
+# =============================================================================
+#  Local development overlay. Runs the app with the dev profile:
+#
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+#  Never use this on a shared or internet-facing host: the dev profile falls
+#  back to a committed JWT secret and exposes Swagger UI.
+# =============================================================================
+
+services:
+  springapp:
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      # New accounts are otherwise PENDING until the e-mailed OTP is entered,
+      # and a local stack has no SMTP server. Only honoured by the dev profile.
+      - AUTH_SKIP_EMAIL_VERIFICATION=true
