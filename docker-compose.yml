@@ -81,6 +81,9 @@ services:
   springapp:
     image: springapp:latest
     container_name: springapp-api
+    # Docker's default 10s would SIGKILL the app mid-shutdown: Spring's graceful
+    # shutdown (30s) plus the e-mail executor drain (30s) need about 60s.
+    stop_grace_period: 70s
     build:
       context: .
       dockerfile: ./Dockerfile

@@ -19,14 +19,18 @@ if [ ! -r "$env_file" ]; then
   exit 2
 fi
 
+# grep exits 1 when nothing matches; under pipefail that would abort the
+# script silently, so a no-match is turned into an empty list instead.
 used=$(cat src/main/resources/application*.yml docker-compose*.yml \
   | sed -E 's/\$\$//g; s/(^|[[:space:]])#.*$//' \
-  | grep -oE '\$\{[A-Z][A-Z0-9_]*' | cut -c3- | sort -u)
-declared=$(grep -oE '^[[:space:]]*#?[[:space:]]*[A-Z][A-Z0-9_]*=' "$env_file" \
+  | { grep -oE '\$\{[A-Z][A-Z0-9_]*' || true; } | cut -c3- | sort -u)
+declared=$({ grep -oE '^[[:space:]]*#?[[:space:]]*[A-Z][A-Z0-9_]*=' "$env_file" || true; } \
   | sed -E 's/^[[:space:]]*#?[[:space:]]*//; s/=$//' | sort -u)
 
-missing=$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$declared"))
-unused=$(comm -13 <(printf '%s\n' "$used") <(printf '%s\n' "$declared"))
+# One name per line, no blank line for an empty list (comm would report it).
+lines() { printf '%s\n' "$1" | sed '/^$/d'; }
+missing=$(comm -23 <(lines "$used") <(lines "$declared"))
+unused=$(comm -13 <(lines "$used") <(lines "$declared"))
 
 status=0
 if [ -n "$missing" ]; then

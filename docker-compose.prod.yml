@@ -67,7 +67,13 @@ services:
       - --appendonly yes
       - --requirepass ${REDIS_PASSWORD}
       - --maxmemory 512mb
-      - --maxmemory-policy allkeys-lru
+      # noeviction, not an LRU policy: this Redis also holds security state
+      # (access-token blacklist, tokens-not-before markers, login/OTP failure
+      # counters). Evicting those would silently revive revoked tokens and
+      # reset lockouts. Cache entries all carry TTLs, so memory is reclaimed by
+      # expiry; at the limit Redis rejects writes (the app logs cache errors and
+      # falls back to the database) instead of dropping keys.
+      - --maxmemory-policy noeviction
     healthcheck:
       # Authenticate and require PONG: a bare ping exits 0 even on NOAUTH.
       # REDISCLI_AUTH keeps the password off the process list.
@@ -89,6 +95,9 @@ services:
   springapp:
     image: springapp:latest
     container_name: springapp-api-prod
+    # Docker's default 10s would SIGKILL the app mid-shutdown: Spring's graceful
+    # shutdown (30s) plus the e-mail executor drain (30s) need about 60s.
+    stop_grace_period: 70s
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -148,9 +157,19 @@ services:
 # ===============================
 # = Networks
 # ===============================
+# The subnet and gateway are pinned so TRUSTED_PROXIES can name them. A reverse
+# proxy on the host reaches the app through the 127.0.0.1 port binding above,
+# so Tomcat sees the bridge gateway (172.28.0.1), not the proxy, as the peer.
+# Set TRUSTED_PROXIES=172.28.0.1 in .env (and have the proxy send
+# X-Forwarded-For / X-Forwarded-Proto); otherwise every client shares the
+# gateway address for rate limiting and login lockout.
 networks:
   springapp-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
 
 # ===============================
 # = Volumes (Production)
