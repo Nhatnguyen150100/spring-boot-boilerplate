@@ -5,15 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -25,6 +28,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.util.UriUtils;
 
 import com.spring.app.common.response.BaseResponse;
 import com.spring.app.configs.properties.FileStorageProperties;
@@ -169,6 +173,21 @@ class UploadServiceImplTest {
   }
 
   @Test
+  void downloadHeaderNeutralizesQuotesAndLineBreaksInFileName() {
+    String name = "a\"b\r\nSet-Cookie: x=y.pdf";
+    assumeTrue(fileSystemCanStore(name), "platform file-name encoding cannot represent this name");
+    UploadServiceImpl service = newService();
+    service.storeFile(new MockMultipartFile("file", name, "application/pdf", "%PDF".getBytes(StandardCharsets.UTF_8)));
+
+    String header = service.downFile(name).getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
+
+    assertThat(header).doesNotContain("\r").doesNotContain("\n");
+    // Clients that follow RFC 6266 read filename*; the quoted legacy filename= is best effort.
+    String encoded = header.substring(header.indexOf("filename*=UTF-8''") + "filename*=UTF-8''".length());
+    assertThat(UriUtils.decode(encoded, StandardCharsets.UTF_8)).isEqualTo(name);
+  }
+
+  @Test
   void downloadingMissingFileIsNotFound() {
     UploadServiceImpl service = newService();
 
@@ -259,6 +278,49 @@ class UploadServiceImplTest {
 
     service.storeFile(file("a.txt", "hello"));
 
+    assertThat(Files.getPosixFilePermissions(fileOf(USER_A, "a.txt")))
+      .isEqualTo(PosixFilePermissions.fromString("rw-r--r--"));
+  }
+
+  @Test
+  void tempFileIsNeverWiderThanOwnerOnlyWhileBeingWritten() throws IOException {
+    assumeTrue(isPosix(), "file system has no POSIX permissions");
+    UploadServiceImpl service = newService();
+    List<Set<PosixFilePermission>> modesSeen = new java.util.ArrayList<>();
+    MockMultipartFile upload = new MockMultipartFile("file", "a.txt", "text/plain",
+      "hello".getBytes(StandardCharsets.UTF_8)) {
+      @Override
+      public InputStream getInputStream() throws IOException {
+        InputStream delegate = super.getInputStream();
+        return new InputStream() {
+          @Override
+          public int read() throws IOException {
+            record();
+            return delegate.read();
+          }
+
+          @Override
+          public int read(byte[] b, int off, int len) throws IOException {
+            record();
+            return delegate.read(b, off, len);
+          }
+
+          private void record() throws IOException {
+            try (Stream<Path> temps = Files.list(dir.resolve(UploadServiceImpl.TEMP_DIR_NAME))) {
+              for (Path temp : (Iterable<Path>) temps::iterator) {
+                modesSeen.add(Files.getPosixFilePermissions(temp));
+              }
+            }
+          }
+        };
+      }
+    };
+
+    service.storeFile(upload);
+
+    assertThat(modesSeen).isNotEmpty();
+    assertThat(modesSeen).allSatisfy(mode ->
+      assertThat(mode).isSubsetOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
     assertThat(Files.getPosixFilePermissions(fileOf(USER_A, "a.txt")))
       .isEqualTo(PosixFilePermissions.fromString("rw-r--r--"));
   }

@@ -2,6 +2,7 @@ package com.spring.app.modules.upload.services.impl;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -11,6 +12,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
@@ -156,14 +158,14 @@ public class UploadServiceImpl implements UploadServiceInterface {
       Files.createDirectories(ownerDir);
       // Same file system as the target, so the final move is an atomic rename.
       tempPath = Files.createTempFile(tempDir, "upload-", ".tmp");
-      try (InputStream in = file.getInputStream()) {
-        Files.copy(in, tempPath, StandardCopyOption.REPLACE_EXISTING);
+      // Write into the existing temp file instead of replacing it: createTempFile
+      // makes it owner-only (0600), and Files.copy(REPLACE_EXISTING) would recreate
+      // it with the umask mode while the upload is still partial.
+      try (InputStream in = file.getInputStream();
+        OutputStream out = Files.newOutputStream(tempPath, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+        in.transferTo(out);
       }
-      if (posix) {
-        // createTempFile makes the file 0600 and the rename keeps that mode;
-        // nginx or a backup agent running as another OS user could not read it.
-        Files.setPosixFilePermissions(tempPath, filePermissions);
-      }
+      applyFilePermissions(tempPath);
       Files.move(tempPath, targetPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       log.info("File {} has been saved for user {}", fileName, ownerDir.getFileName());
       return ResponseBuilder.success("File uploaded successfully", fileName);
@@ -172,6 +174,22 @@ public class UploadServiceImpl implements UploadServiceInterface {
       throw new BadRequestException("Cannot save file");
     } finally {
       deleteTempFile(tempPath);
+    }
+  }
+
+  /**
+   * The temp file is owner-only, and the rename keeps that mode; nginx or a
+   * backup agent running as another OS user could not read the stored file.
+   * Some mounts report POSIX support but reject chmod: keep the upload working.
+   */
+  private void applyFilePermissions(Path path) {
+    if (!posix) {
+      return;
+    }
+    try {
+      Files.setPosixFilePermissions(path, filePermissions);
+    } catch (IOException | UnsupportedOperationException ex) {
+      log.warn("Could not set permissions on uploaded file, keeping the default mode: {}", ex.getMessage());
     }
   }
 
@@ -193,7 +211,8 @@ public class UploadServiceImpl implements UploadServiceInterface {
     if (!Files.isRegularFile(filePath) || !Files.isReadable(filePath)) {
       throw new ResourceNotFoundException("File not found");
     }
-    // Encodes non-ASCII names (RFC 5987 filename*) and escapes quotes.
+    // Non-ASCII names, quotes and control characters are percent-encoded in
+    // filename* (RFC 5987), so the header cannot be split.
     ContentDisposition disposition = ContentDisposition.attachment()
       .filename(filePath.getFileName().toString(), StandardCharsets.UTF_8)
       .build();
