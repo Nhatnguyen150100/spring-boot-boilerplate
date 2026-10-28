@@ -17,6 +17,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContext;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
+import org.springframework.security.oauth2.client.web.OAuth2LoginAuthenticationFilter;
+import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -39,6 +42,9 @@ class WebInfrastructureIntegrationTest {
   private MockMvc mockMvc;
 
   @Autowired
+  private FilterChainProxy filterChainProxy;
+
+  @Autowired
   private HealthContributorRegistry healthContributorRegistry;
 
   @Autowired
@@ -57,6 +63,22 @@ class WebInfrastructureIntegrationTest {
     assertThat(disabledFilters).contains(
         context.getBean(RateLimitFilter.class),
         context.getBean(JwtAuthenticatorFilter.class));
+  }
+
+  @Test
+  void rateLimitRunsBeforeTheOAuth2LoginFilters() {
+    List<Class<?>> chain = filterChainProxy.getFilterChains().stream()
+        .flatMap(securityChain -> securityChain.getFilters().stream())
+        .<Class<?>>map(Object::getClass)
+        .toList();
+
+    // Both OAuth2 filters can complete the response themselves (redirect to Google,
+    // callback), so anything placed after them never sees /api/v1/auth/oauth2/**.
+    assertThat(chain).contains(JwtAuthenticatorFilter.class);
+    assertThat(chain.indexOf(RateLimitFilter.class))
+        .isNotNegative()
+        .isLessThan(chain.indexOf(OAuth2AuthorizationRequestRedirectFilter.class))
+        .isLessThan(chain.indexOf(OAuth2LoginAuthenticationFilter.class));
   }
 
   @Test

@@ -14,6 +14,7 @@ import org.springframework.security.config.annotation.web.configurers.SessionMan
 import org.springframework.security.config.annotation.web.configurers.oauth2.client.OAuth2LoginConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -84,7 +85,7 @@ public class SecurityConfig {
         .sessionManagement(this::sessionManagement)
         .authorizeHttpRequests(this::authorizeHttpRequests)
         .authenticationProvider(authenticationProvider)
-        .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
+        .addFilterBefore(rateLimitFilter, OAuth2AuthorizationRequestRedirectFilter.class)
         .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
         .oauth2Login(this::oauth2Login)
         .build();
