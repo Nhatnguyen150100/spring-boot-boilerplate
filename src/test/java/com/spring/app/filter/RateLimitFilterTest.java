@@ -1,5 +1,6 @@
 package com.spring.app.filter;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -7,6 +8,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 
@@ -21,6 +23,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.ModelAndView;
 
 import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.enums.ERateLimitEndpoint;
@@ -101,6 +104,35 @@ class RateLimitFilterTest {
   }
 
   @Test
+  void rejectionCarriesRetryAfter() throws Exception {
+    MockHttpServletRequest request = request("/api/v1/auth/login", CLIENT_IP);
+    MockHttpServletResponse response = new MockHttpServletResponse();
+    RateLimitExceededException limit = new RateLimitExceededException("limit");
+    doThrow(limit).when(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, CLIENT_IP);
+    when(handlerExceptionResolver.resolveException(request, response, null, limit)).thenReturn(new ModelAndView());
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getHeader("Retry-After")).isEqualTo("60");
+    assertThat(response.getStatus()).as("left to the resolver").isEqualTo(200);
+  }
+
+  @Test
+  void unresolvedRejectionIsStillA429() throws Exception {
+    MockHttpServletRequest request = request("/api/v1/auth/login", CLIENT_IP);
+    MockHttpServletResponse response = new MockHttpServletResponse();
+    RateLimitExceededException limit = new RateLimitExceededException("limit");
+    doThrow(limit).when(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.AUTH, CLIENT_IP);
+    when(handlerExceptionResolver.resolveException(request, response, null, limit)).thenReturn(null);
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(response.getStatus()).isEqualTo(429);
+    assertThat(response.getHeader("Retry-After")).isEqualTo("60");
+    verifyNoInteractions(filterChain);
+  }
+
+  @Test
   void brokenLimiterFailsOpenAndChainRunsOnce() throws Exception {
     MockHttpServletRequest request = request("/api/v1/users/me", CLIENT_IP);
     MockHttpServletResponse response = new MockHttpServletResponse();
@@ -139,13 +171,25 @@ class RateLimitFilterTest {
     verify(filterChain).doFilter(request, response);
   }
 
+  @Test
+  void undecodablePathFallsBackToTheGlobalBucket() throws Exception {
+    MockHttpServletRequest request = request("/api/%zz", CLIENT_IP);
+    MockHttpServletResponse response = new MockHttpServletResponse();
+
+    filter.doFilter(request, response, filterChain);
+
+    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.GLOBAL, CLIENT_IP);
+    verify(filterChain).doFilter(request, response);
+  }
+
   // ---------------------------------------------------------------- client IP resolution
+
+  // Resolution details are covered by ClientKeysTest; these prove the filter uses it.
 
   @Test
   void forwardedHeadersAreIgnoredFromUntrustedPeers() throws Exception {
     MockHttpServletRequest request = request("/api/v1/users/me", CLIENT_IP);
     request.addHeader("X-Forwarded-For", "203.0.113.9");
-    request.addHeader("X-Real-IP", "203.0.113.10");
 
     filter.doFilter(request, new MockHttpServletResponse(), filterChain);
 
@@ -156,42 +200,7 @@ class RateLimitFilterTest {
   void trustedProxyYieldsRightMostUntrustedHop() throws Exception {
     applicationProperties.setTrustedProxies(List.of("10.0.0.1", "10.0.0.2"));
     MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
-    // "6.6.6.6" was typed by the client itself; our proxies appended the rest.
     request.addHeader("X-Forwarded-For", "6.6.6.6, 203.0.113.9, 10.0.0.2");
-
-    filter.doFilter(request, new MockHttpServletResponse(), filterChain);
-
-    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "203.0.113.9");
-  }
-
-  @Test
-  void forwardedForOnSeparateHeaderLinesIsWalkedAcrossAllLines() throws Exception {
-    applicationProperties.setTrustedProxies(List.of("10.0.0.1"));
-    MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
-    request.addHeader("X-Forwarded-For", "6.6.6.6");     // attacker-supplied line
-    request.addHeader("X-Forwarded-For", "203.0.113.9"); // line added by our proxy
-
-    filter.doFilter(request, new MockHttpServletResponse(), filterChain);
-
-    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "203.0.113.9");
-  }
-
-  @Test
-  void nonIpForwardedHopFallsBackToThePeer() throws Exception {
-    applicationProperties.setTrustedProxies(List.of("10.0.0.1"));
-    MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
-    request.addHeader("X-Forwarded-For", "203.0.113.9, evil.example.com");
-
-    filter.doFilter(request, new MockHttpServletResponse(), filterChain);
-
-    verify(rateLimitManagerService).checkRateLimitAndThrow(ERateLimitEndpoint.API, "10.0.0.1");
-  }
-
-  @Test
-  void trustedProxyWithoutForwardedForFallsBackToRealIp() throws Exception {
-    applicationProperties.setTrustedProxies(List.of("10.0.0.1"));
-    MockHttpServletRequest request = request("/api/v1/users/me", "10.0.0.1");
-    request.addHeader("X-Real-IP", "203.0.113.9");
 
     filter.doFilter(request, new MockHttpServletResponse(), filterChain);
 

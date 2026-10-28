@@ -7,6 +7,7 @@ import com.spring.app.modules.auth.dto.request.RefreshTokenDto;
 import com.spring.app.modules.auth.dto.request.RegisterRequestDto;
 import com.spring.app.modules.auth.dto.request.ResendOtpRequestDto;
 import com.spring.app.modules.auth.dto.request.ResetPasswordRequestDto;
+import com.spring.app.configs.properties.ApplicationProperties;
 import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.auth.services.AuthServiceInterface;
 import com.spring.app.utils.ClientKeys;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
   private final AuthServiceInterface authService;
+  private final ApplicationProperties applicationProperties;
 
   @Operation(summary = "Register a new user")
   @PostMapping("/register")
@@ -48,10 +50,9 @@ public class AuthController {
   @Operation(summary = "Login")
   @PostMapping("/login")
   public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDto dto, HttpServletRequest request) {
-    // getRemoteAddr() is the real client once Tomcat's RemoteIpValve has
-    // processed X-Forwarded-For from a trusted proxy (server.tomcat.remoteip.*).
+    // The same client identity RateLimitFilter uses (application.trusted-proxies);
     // IPv6 clients are throttled per /64, so one host cannot rotate addresses.
-    return authService.login(dto, ClientKeys.clientKey(request.getRemoteAddr()));
+    return authService.login(dto, ClientKeys.clientKey(request, applicationProperties.getTrustedProxies()));
   }
 
   @Operation(summary = "Refresh access token")

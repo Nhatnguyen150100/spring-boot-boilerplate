@@ -1,9 +1,9 @@
 package com.spring.app.filter;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.List;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -35,6 +35,8 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class RateLimitFilter extends OncePerRequestFilter {
 
+  private static final String RETRY_AFTER_SECONDS = "60";
+
   private final AntPathMatcher pathMatcher;
   private final RateLimitManagerService rateLimitManagerService;
   private final HandlerExceptionResolver handlerExceptionResolver;
@@ -47,9 +49,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
       @NonNull FilterChain filterChain)
       throws ServletException, IOException {
 
-    ERateLimitEndpoint bucket = resolveBucket(requestPath(request));
-    // IPv6 clients are throttled per /64, not per address (see ClientKeys).
-    String clientIp = ClientKeys.clientKey(getClientIpAddress(request));
+    ERateLimitEndpoint bucket = resolveBucket(request);
+    // Same identity as login throttling; IPv6 clients are keyed per /64 (see ClientKeys).
+    String clientIp = ClientKeys.clientKey(request, applicationProperties.getTrustedProxies());
 
     // Only the rate-limit check is guarded. The downstream chain is called
     // exactly once, outside any try block: calling it again after a failure
@@ -58,7 +60,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
       rateLimitManagerService.checkRateLimitAndThrow(bucket, clientIp);
     } catch (RateLimitExceededException e) {
       monitoringService.recordRateLimitRejection(bucket.getEndpointType());
-      handlerExceptionResolver.resolveException(request, response, null, e);
+      // The shortest window; a client over its hourly or daily quota retries in vain, but harmlessly.
+      response.setHeader(HttpHeaders.RETRY_AFTER, RETRY_AFTER_SECONDS);
+      if (handlerExceptionResolver.resolveException(request, response, null, e) == null
+          && !response.isCommitted()) {
+        response.sendError(HttpStatus.TOO_MANY_REQUESTS.value());
+      }
       return;
     } catch (RuntimeException e) {
       // Fail open: a broken limiter must not take the whole API down.
@@ -66,6 +73,21 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     filterChain.doFilter(request, response);
+  }
+
+  /**
+   * A path that cannot be decoded (e.g. "/api/%zz") falls in GLOBAL: the
+   * request is still throttled, and whatever handles it later rejects it.
+   */
+  private ERateLimitEndpoint resolveBucket(HttpServletRequest request) {
+    String path;
+    try {
+      path = requestPath(request);
+    } catch (IllegalArgumentException e) {
+      log.debug("Undecodable request path; using the {} bucket", ERateLimitEndpoint.GLOBAL);
+      return ERateLimitEndpoint.GLOBAL;
+    }
+    return resolveBucket(path);
   }
 
   /**
@@ -83,52 +105,5 @@ public class RateLimitFilter extends OncePerRequestFilter {
       }
     }
     return ERateLimitEndpoint.GLOBAL;
-  }
-
-  /**
-   * The peer address, unless the peer is one of {@code application.trusted-proxies}.
-   * Then X-Forwarded-For is walked right to left: entries appended by our own
-   * proxies are skipped and the first untrusted one is the client. Anything
-   * further left was sent by the client itself and can be forged.
-   */
-  String getClientIpAddress(HttpServletRequest request) {
-    String remoteAddr = request.getRemoteAddr();
-    if (!isTrustedProxy(remoteAddr)) {
-      return remoteAddr;
-    }
-
-    // A proxy may append its own header line instead of extending the first
-    // one, so every line counts and the client-supplied ones come first.
-    String xForwardedFor = String.join(",", Collections.list(request.getHeaders("X-Forwarded-For")));
-    if (StringUtils.hasText(xForwardedFor)) {
-      String[] hops = xForwardedFor.split(",");
-      for (int i = hops.length - 1; i >= 0; i--) {
-        String hop = hops[i].trim();
-        if (!ClientKeys.isIpLiteral(hop)) {
-          // empty, "unknown", a name or garbage: we cannot tell where the client is
-          return remoteAddr;
-        }
-        if (!isTrustedProxy(hop)) {
-          return hop;
-        }
-      }
-      return remoteAddr;
-    }
-
-    String xRealIp = request.getHeader("X-Real-IP");
-    if (StringUtils.hasText(xRealIp) && !"unknown".equalsIgnoreCase(xRealIp.trim())) {
-      return xRealIp.trim();
-    }
-    return remoteAddr;
-  }
-
-  private boolean isTrustedProxy(String address) {
-    List<String> proxies = applicationProperties.getTrustedProxies();
-    if (proxies == null || proxies.isEmpty()) {
-      return false;
-    }
-    return proxies.stream()
-        .map(String::trim)
-        .anyMatch(address::equals);
   }
 }
