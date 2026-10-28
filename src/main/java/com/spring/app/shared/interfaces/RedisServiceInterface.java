@@ -9,17 +9,9 @@ public interface RedisServiceInterface {
 
   void delete(String key);
 
-  boolean hasKey(String key);
-
   void blacklistToken(String token, long expirySeconds);
 
   boolean isTokenBlacklisted(String token);
-
-  /**
-   * Stores {@code String.valueOf(value)} as a plain string in the rate-limit
-   * keyspace.
-   */
-  void setRateLimitValue(String key, Object value, long duration, TimeUnit unit);
 
   /**
    * Increments a fixed-window rate-limit counter and returns the new value.
@@ -33,13 +25,4 @@ public interface RedisServiceInterface {
    *         no reply)
    */
   long incrementRateLimit(String key, long windowSeconds);
-
-  /**
-   * @return the raw counter as a {@code String}, or {@code null} if absent
-   */
-  Object getRateLimitValue(String key);
-
-  void deleteRateLimitKey(String key);
-
-  boolean hasRateLimitKey(String key);
 }

@@ -1,7 +1,6 @@
 package com.spring.app.modules.auth.repositories;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,8 +16,6 @@ import com.spring.app.modules.auth.entities.User;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
 
   Optional<RefreshToken> findByToken(String token);
-
-  List<RefreshToken> findAllByUserAndIsRevokedFalse(User user);
 
   /**
    * Bulk JPQL needs a transaction; AuthServiceImpl no longer opens one around

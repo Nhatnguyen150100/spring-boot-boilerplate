@@ -94,17 +94,6 @@ public class RedisService implements RedisServiceInterface {
     redisTemplate.delete(key);
   }
 
-  /**
-   * Determines whether the given key exists in the Redis store.
-   *
-   * @param key the key for which to check existence
-   * @return true if the key exists, false otherwise
-   */
-  @Override
-  public boolean hasKey(String key) {
-    return Boolean.TRUE.equals(redisTemplate.hasKey(key));
-  }
-
   @Override
   public void blacklistToken(String token, long expirySeconds) {
     if (expirySeconds > 0) {
@@ -118,28 +107,8 @@ public class RedisService implements RedisServiceInterface {
   }
 
   @Override
-  public void setRateLimitValue(String key, Object value, long duration, TimeUnit unit) {
-    stringRedisTemplate.opsForValue().set(key, String.valueOf(value), duration, unit);
-  }
-
-  @Override
   public long incrementRateLimit(String key, long windowSeconds) {
     Long count = stringRedisTemplate.execute(INCREMENT_FIXED_WINDOW, List.of(key), String.valueOf(windowSeconds));
     return count == null ? 0L : count;
-  }
-
-  @Override
-  public Object getRateLimitValue(String key) {
-    return stringRedisTemplate.opsForValue().get(key);
-  }
-
-  @Override
-  public void deleteRateLimitKey(String key) {
-    stringRedisTemplate.delete(key);
-  }
-
-  @Override
-  public boolean hasRateLimitKey(String key) {
-    return Boolean.TRUE.equals(stringRedisTemplate.hasKey(key));
   }
 }

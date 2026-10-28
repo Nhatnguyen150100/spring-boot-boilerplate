@@ -23,7 +23,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.RedisScript;
 
 /**
@@ -40,9 +39,6 @@ class RedisServiceTest {
 
   @Mock
   private StringRedisTemplate stringRedisTemplate;
-
-  @Mock
-  private ValueOperations<String, String> stringValueOps;
 
   @Captor
   private ArgumentCaptor<RedisScript<Long>> scriptCaptor;
@@ -82,17 +78,5 @@ class RedisServiceTest {
         .thenReturn((Long) null);
 
     assertThat(redisService.incrementRateLimit(KEY, 3600)).isZero();
-  }
-
-  @Test
-  void rateLimitValuesAreWrittenAndReadAsPlainStrings() {
-    when(stringRedisTemplate.opsForValue()).thenReturn(stringValueOps);
-    when(stringValueOps.get(KEY)).thenReturn("7");
-
-    redisService.setRateLimitValue(KEY, 5, 60, TimeUnit.SECONDS);
-
-    verify(stringValueOps).set(KEY, "5", 60, TimeUnit.SECONDS);
-    assertThat(redisService.getRateLimitValue(KEY)).isEqualTo("7");
-    verifyNoInteractions(redisTemplate);
   }
 }

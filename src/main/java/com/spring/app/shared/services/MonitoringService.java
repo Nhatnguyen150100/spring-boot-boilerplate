@@ -6,8 +6,6 @@ import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.TimeUnit;
-
 /**
  * Authentication metrics. Prometheus appends {@code _total} to counters.
  * <ul>
@@ -101,14 +99,6 @@ public class MonitoringService {
 
   public void stopRegistrationTimer(Timer.Sample sample) {
     sample.stop(registrationTimer);
-  }
-
-  public void recordLoginDuration(long duration, TimeUnit unit) {
-    loginTimer.record(duration, unit);
-  }
-
-  public void recordRegistrationDuration(long duration, TimeUnit unit) {
-    registrationTimer.record(duration, unit);
   }
 
   /** Micrometer returns the already-registered counter for the same name and tags. */

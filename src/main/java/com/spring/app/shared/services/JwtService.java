@@ -19,7 +19,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 
 import com.spring.app.configs.properties.JwtProperties;
-import com.spring.app.enums.ERole;
 import com.spring.app.modules.auth.entities.User;
 import com.spring.app.shared.interfaces.JwtServiceInterface;
 
@@ -51,16 +50,6 @@ public class JwtService implements JwtServiceInterface {
   @Override
   public String extractUsername(String token) {
     return extractClaim(token, Claims::getSubject);
-  }
-
-  @Override
-  public UUID extractUserId(String token) {
-    return extractClaim(token, claims -> claims.get("id", UUID.class));
-  }
-
-  @Override
-  public ERole extractRole(String token) {
-    return extractClaim(token, claims -> claims.get("role", ERole.class));
   }
 
   @Override

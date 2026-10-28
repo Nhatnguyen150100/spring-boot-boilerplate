@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,11 +22,8 @@ import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 
 import com.spring.app.configs.CacheConfig;
 import com.spring.app.enums.EUserStatus;
-import com.spring.app.exceptions.BadRequestException;
 import com.spring.app.exceptions.ResourceNotFoundException;
-import com.spring.app.modules.auth.entities.RefreshToken;
 import com.spring.app.modules.auth.entities.User;
-import com.spring.app.modules.auth.repositories.RefreshTokenRepository;
 import com.spring.app.modules.auth.repositories.UserRepository;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,9 +32,6 @@ class AuthCacheServiceTest {
   @Mock
   private UserRepository userRepository;
 
-  @Mock
-  private RefreshTokenRepository refreshTokenRepository;
-
   private final CacheManager cacheManager = new ConcurrentMapCacheManager(CacheConfig.USER_PROFILE);
 
   private AuthCacheService service;
@@ -46,7 +39,7 @@ class AuthCacheServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new AuthCacheService(userRepository, refreshTokenRepository, cacheManager);
+    service = new AuthCacheService(userRepository, cacheManager);
     user = User.builder()
         .email("john@example.com")
         .password("$2a$10$hashhashhash")
@@ -98,29 +91,10 @@ class AuthCacheServiceTest {
     doThrow(new IllegalStateException("redis down")).when(failing).evict(user.getId());
     CacheManager failingManager = mock(CacheManager.class);
     when(failingManager.getCache(CacheConfig.USER_PROFILE)).thenReturn(failing);
-    AuthCacheService failingService = new AuthCacheService(userRepository, refreshTokenRepository, failingManager);
+    AuthCacheService failingService = new AuthCacheService(userRepository, failingManager);
 
     assertThat(failingService.updateCachedUser(user)).isSameAs(user);
     verify(failing).evict(user.getId());
-  }
-
-  @Test
-  void refreshTokensAreAlwaysReadFromTheRepository() {
-    RefreshToken token = RefreshToken.builder().token("abc").isRevoked(true).user(user).build();
-    when(refreshTokenRepository.findByToken("abc")).thenReturn(Optional.of(token));
-
-    assertThat(service.getRefreshToken("abc")).isSameAs(token);
-    assertThat(service.getRefreshToken("abc").isRevoked()).isTrue();
-    verify(refreshTokenRepository, times(2)).findByToken("abc");
-  }
-
-  @Test
-  void unknownRefreshTokenIsABadRequest() {
-    when(refreshTokenRepository.findByToken("nope")).thenReturn(Optional.empty());
-
-    assertThatThrownBy(() -> service.getRefreshToken("nope"))
-        .isInstanceOf(BadRequestException.class)
-        .hasMessage("Invalid refresh token");
   }
 
   @Test

@@ -14,11 +14,6 @@ public final class WhitelistUrlConstant {
   public static final String OAUTH2_LOGIN_URL    = ApplicationConstants.AUTH_BASE_PATH + "/oauth2/authorization";
   public static final String OAUTH2_REDIRECT_URL = ApplicationConstants.AUTH_BASE_PATH + "/oauth2/code/google";
 
-  // Rate-limit path groups, read by the rate-limit code (not by SecurityConfig).
-  public static final String[] AUTH_ENDPOINTS_RATELIMIT   = { ApplicationConstants.AUTH_BASE_PATH + "/**" };
-  public static final String[] UPLOAD_ENDPOINTS_RATELIMIT = { ApplicationConstants.FILES_BASE_PATH + "/**" };
-  public static final String[] API_ENDPOINTS_RATELIMIT    = {};
-
   /**
    * Anonymous auth endpoints, POST only. logout is deliberately absent: it
    * needs a valid access token.
