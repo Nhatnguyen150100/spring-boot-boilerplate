@@ -34,6 +34,11 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class OtpAttemptService {
 
+  /** Counter purpose of account activation OTPs. */
+  public static final String PURPOSE_ACTIVATION = "activation";
+  /** Counter purpose of password-reset OTPs. */
+  public static final String PURPOSE_PASSWORD_RESET = "password_reset";
+
   private static final String KEY_PREFIX = "auth:otp-failures:";
 
   /** INCR and arm the TTL in one round trip, so the key can never lose its expiry. */
@@ -68,12 +73,26 @@ public class OtpAttemptService {
     }
   }
 
-  /** Called after a correct OTP, and when a new OTP is sent for the same purpose. */
+  /** Called after a correct OTP. */
   public void reset(String email, String purpose) {
     try {
       redisTemplate.delete(key(email, purpose));
     } catch (RuntimeException e) {
       log.warn("Could not clear the OTP attempt counter ({})", e.getClass().getSimpleName());
+    }
+  }
+
+  /**
+   * Called once a new OTP has been stored. There is one OTP per e-mail, so the
+   * new one replaces any earlier OTP of either purpose: both counters start
+   * over. Never called when the store failed, so a still-live old OTP keeps
+   * its count.
+   */
+  public void resetAll(String email) {
+    try {
+      redisTemplate.delete(List.of(key(email, PURPOSE_ACTIVATION), key(email, PURPOSE_PASSWORD_RESET)));
+    } catch (RuntimeException e) {
+      log.warn("Could not clear the OTP attempt counters ({})", e.getClass().getSimpleName());
     }
   }
 

@@ -6,6 +6,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -23,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailSendException;
 
+import com.spring.app.modules.auth.services.OtpAttemptService;
 import com.spring.app.shared.interfaces.MailServiceInterface;
 import com.spring.app.utils.OtpFunctionUtil;
 
@@ -42,6 +45,9 @@ class OtpEmailServiceTest {
   @Mock
   private MailServiceInterface mailService;
 
+  @Mock
+  private OtpAttemptService otpAttemptService;
+
   private OtpEmailService service;
 
   private final Logger logger = (Logger) LoggerFactory.getLogger(OtpEmailService.class);
@@ -50,7 +56,7 @@ class OtpEmailServiceTest {
 
   @BeforeEach
   void setUp() {
-    service = new OtpEmailService(otpFunction, mailService);
+    service = new OtpEmailService(otpFunction, mailService, otpAttemptService);
     // capture instead of printing: keeps test output clean and lets us inspect it
     originalLevel = logger.getLevel();
     logger.setLevel(Level.DEBUG);
@@ -75,6 +81,29 @@ class OtpEmailServiceTest {
     InOrder order = inOrder(otpFunction, mailService);
     order.verify(otpFunction).storeOtp("alice@example.com", "123456", OtpEmailService.OTP_EXPIRATION_SECONDS);
     order.verify(mailService).sendOtpEmail("alice@example.com", "123456");
+  }
+
+  /** The new OTP replaces any older one, so its wrong-guess budget starts over - but only once it is stored. */
+  @Test
+  void resetsTheWrongGuessCountersOnlyAfterTheNewOtpIsStored() throws Exception {
+    when(otpFunction.generateOtp()).thenReturn("123456");
+
+    service.sendOtpEmailAsync("alice@example.com");
+
+    InOrder order = inOrder(otpFunction, otpAttemptService, mailService);
+    order.verify(otpFunction).storeOtp("alice@example.com", "123456", OtpEmailService.OTP_EXPIRATION_SECONDS);
+    order.verify(otpAttemptService).resetAll("alice@example.com");
+    order.verify(mailService).sendOtpEmail("alice@example.com", "123456");
+  }
+
+  @Test
+  void aFailedStoreLeavesTheWrongGuessCountersAlone() {
+    when(otpFunction.generateOtp()).thenReturn("123456");
+    doThrow(new IllegalStateException("redis down")).when(otpFunction).storeOtp(anyString(), anyString(), anyLong());
+
+    service.sendOtpEmailAsync("alice@example.com");
+
+    verify(otpAttemptService, never()).resetAll(anyString());
   }
 
   @Test

@@ -88,8 +88,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
   static final String REGISTRATION_REJECTED = "This email cannot be registered";
   static final String ACCOUNT_NOT_ACTIVE = "Account is not active";
-  static final String OTP_PURPOSE_ACTIVATION = "activation";
-  static final String OTP_PURPOSE_PASSWORD_RESET = "password_reset";
+  static final String OTP_PURPOSE_ACTIVATION = OtpAttemptService.PURPOSE_ACTIVATION;
+  static final String OTP_PURPOSE_PASSWORD_RESET = OtpAttemptService.PURPOSE_PASSWORD_RESET;
 
   private final AuthProperties authProperties;
   private final Environment environment;
@@ -132,16 +132,6 @@ public class AuthServiceImpl implements AuthServiceInterface {
       monitoringService.recordRateLimitRejection("auth_email");
       throw e;
     }
-  }
-
-  /**
-   * Mails a fresh OTP and clears the wrong-guess counter for {@code purpose}:
-   * earlier wrong guesses were against the OTP this one replaces, so they must
-   * not eat into the new OTP's {@link OtpAttemptService} budget.
-   */
-  private void sendOtp(String email, String purpose) {
-    otpAttemptService.reset(email, purpose);
-    otpEmailService.sendOtpEmailAsync(email);
   }
 
   /**
@@ -194,7 +184,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
 
       // Only once the row exists: an OTP for an account that failed to save is useless.
       if (!skipVerification) {
-        sendOtp(emailRegister, OTP_PURPOSE_ACTIVATION);
+        otpEmailService.sendOtpEmailAsync(emailRegister);
       }
 
       var response = authMapper.userToRegisterResponseDto(newUser);
@@ -212,7 +202,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     // Same answer whether the account is unknown, ACTIVE or PENDING.
     userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.PENDING)
-        .ifPresent(user -> sendOtp(email, OTP_PURPOSE_ACTIVATION));
+        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
     return ResponseBuilder.success("If the account is awaiting activation, a new OTP has been sent");
   }
 
@@ -331,7 +321,7 @@ public class AuthServiceImpl implements AuthServiceInterface {
     throttleByEmail(email);
     userRepository.findByEmail(email)
         .filter(user -> user.getStatus() == EUserStatus.ACTIVE)
-        .ifPresent(user -> sendOtp(email, OTP_PURPOSE_PASSWORD_RESET));
+        .ifPresent(user -> otpEmailService.sendOtpEmailAsync(email));
     return ResponseBuilder.success("If your email is registered, you will receive an OTP shortly");
   }
 

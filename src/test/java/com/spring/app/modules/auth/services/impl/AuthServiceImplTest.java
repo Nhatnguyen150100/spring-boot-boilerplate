@@ -754,32 +754,29 @@ class AuthServiceImplTest {
     verify(rateLimitManagerService, times(3)).checkRateLimitAndThrow(eq(ERateLimitEndpoint.AUTH), anyString());
   }
 
+  /**
+   * OtpEmailService is a mock here, i.e. every send is "dropped" before the new
+   * OTP is stored. The old OTP is then still live, so its wrong-guess counter
+   * must survive: only OtpEmailService resets it, after storing the new OTP.
+   */
   @Test
-  void sendingANewOtpClearsTheWrongGuessCounterForThatPurpose() {
+  void aDroppedOtpSendLeavesTheWrongGuessCountersInPlace() {
     givenUser(user("pending@example.com", EUserStatus.PENDING));
     givenUser(user("active@example.com", EUserStatus.ACTIVE));
     otpAttemptService.recordFailure("new@example.com", "activation");
     otpAttemptService.recordFailure("pending@example.com", "activation");
     otpAttemptService.recordFailure("active@example.com", "password_reset");
-    assertThat(otpFailureCounters).hasSize(3);
 
     authService.register(registerDto("new@example.com"));
     authService.resendOtp("pending@example.com");
     authService.forgotPassword("active@example.com");
 
-    assertThat(otpFailureCounters).isEmpty();
-  }
-
-  @Test
-  void noOtpSentMeansTheCounterIsLeftAlone() {
-    givenUser(user("active@example.com", EUserStatus.ACTIVE));
-    otpAttemptService.recordFailure("active@example.com", "activation");
-
-    authService.resendOtp("active@example.com");
-    authService.resendOtp("nobody@example.com");
-
+    verify(otpEmailService).sendOtpEmailAsync("new@example.com");
+    verify(otpEmailService).sendOtpEmailAsync("pending@example.com");
+    verify(otpEmailService).sendOtpEmailAsync("active@example.com");
     verify(otpAttemptService, never()).reset(anyString(), anyString());
-    assertThat(otpFailureCounters).hasSize(1);
+    verify(otpAttemptService, never()).resetAll(anyString());
+    assertThat(otpFailureCounters).hasSize(3);
   }
 
   @Test

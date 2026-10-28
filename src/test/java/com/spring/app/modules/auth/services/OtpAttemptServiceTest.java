@@ -76,6 +76,21 @@ class OtpAttemptServiceTest {
   }
 
   @Test
+  void resetAllDeletesTheCountersOfBothPurposes() {
+    service.resetAll(EMAIL);
+
+    verify(redis).delete(List.of(OtpAttemptService.key(EMAIL, OtpAttemptService.PURPOSE_ACTIVATION),
+        OtpAttemptService.key(EMAIL, OtpAttemptService.PURPOSE_PASSWORD_RESET)));
+  }
+
+  @Test
+  void resetAllFailsOpen() {
+    doThrow(new RedisConnectionFailureException("down")).when(redis).delete(anyList());
+
+    assertThatCode(() -> service.resetAll(EMAIL)).doesNotThrowAnyException();
+  }
+
+  @Test
   void redisOutageFailsOpen() {
     doThrow(new RedisConnectionFailureException("down")).when(redis).execute(any(RedisScript.class), anyList(), any());
     doThrow(new RedisConnectionFailureException("down")).when(redis).delete(anyString());

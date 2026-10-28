@@ -158,8 +158,10 @@ Feature modules under `src/main/java/com/spring/app/modules/`:
 - **E-mail verification**: new accounts are PENDING until activated with a
   6-digit OTP (SecureRandom, 3-minute TTL, stored in Redis under
   `otp:<sha256(email)>`). An OTP is discarded after 5 wrong guesses
-  (`AUTH_OTP_MAX_ATTEMPTS`); sending a new OTP (register, resend-otp,
-  forgot-password) clears that purpose's wrong-guess counter. Skipping
+  (`AUTH_OTP_MAX_ATTEMPTS`). `OtpEmailService` resets both wrong-guess
+  counters (activation, password_reset) for the e-mail right after a new OTP
+  is stored (one OTP per e-mail, so the new one replaces any old one); a
+  failed store or dropped send leaves them as they are. Skipping
   verification is an explicit opt-in
   (`application.auth.skip-email-verification`, default `false`) and is
   honoured only while the `dev` profile is also active.

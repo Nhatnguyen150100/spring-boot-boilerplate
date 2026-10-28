@@ -224,8 +224,8 @@ A file of another user, or a missing file, is a 404.
 - **Accounts**: only ACTIVE users can log in or use a token. Unknown e-mail
   and wrong password get the same login error; OTP, resend and reset
   responses do not reveal whether an e-mail is registered. An OTP expires
-  after 3 minutes or 5 wrong guesses; a newly sent OTP starts with a fresh
-  guess count. Unactivated (PENDING) accounts are never expired, so they keep
+  after 3 minutes or 5 wrong guesses; once a new OTP is stored, it starts
+  with a fresh guess count. Unactivated (PENDING) accounts are never expired, so they keep
   their e-mail address reserved.
 - **Passwords**: BCrypt. `@StrongPassword` policy on register/reset (8+
   chars, upper, lower, digit, special), max 72 bytes.

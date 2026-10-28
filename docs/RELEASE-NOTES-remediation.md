@@ -33,8 +33,9 @@ Read the checklist before deploying.
 - **OTPs issued before the deploy are invalid**: the Redis key format changed
   (`otp:<sha256(lower(trim(email)))>`). Users press "resend".
 - An OTP is now discarded after **5 wrong guesses** (`AUTH_OTP_MAX_ATTEMPTS`);
-  the user has to request a new one. Sending a new OTP (register, resend-otp,
-  forgot-password) resets the wrong-guess count for it.
+  the user has to request a new one. Once a new OTP has been stored (it
+  replaces any older one), the wrong-guess counts for that e-mail start over;
+  a send that is dropped before storing leaves them untouched.
 - **Logout signs out everywhere**: it blacklists the presented access token,
   revokes all of the user's refresh tokens and ends the access tokens of the
   user's other devices (they are refused from the next request on).
