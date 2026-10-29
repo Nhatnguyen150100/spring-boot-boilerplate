@@ -88,8 +88,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
   static final String INVALID_REFRESH_TOKEN = "Invalid or expired refresh token";
   static final String REGISTRATION_REJECTED = "This email cannot be registered";
   static final String ACCOUNT_NOT_ACTIVE = "Account is not active";
-  static final String OTP_PURPOSE_ACTIVATION = "activation";
-  static final String OTP_PURPOSE_PASSWORD_RESET = "password_reset";
+  static final String OTP_PURPOSE_ACTIVATION = OtpAttemptService.PURPOSE_ACTIVATION;
+  static final String OTP_PURPOSE_PASSWORD_RESET = OtpAttemptService.PURPOSE_PASSWORD_RESET;
 
   private final AuthProperties authProperties;
   private final Environment environment;
@@ -263,7 +263,9 @@ public class AuthServiceImpl implements AuthServiceInterface {
       throw new InvalidTokenException(INVALID_ACCESS_TOKEN);
     }
     Claims claims = parseAccessToken(token);
-    User user = userRepository.findByEmail(claims.getSubject())
+    // Tokens minted for legacy mixed-case rows carry that casing as subject.
+    User user = Optional.ofNullable(EmailNormalizer.normalize(claims.getSubject()))
+        .flatMap(userRepository::findByEmail)
         .orElseThrow(() -> new InvalidTokenException(INVALID_ACCESS_TOKEN));
 
     long remainingSeconds = (claims.getExpiration().getTime() - System.currentTimeMillis()) / 1000;
@@ -271,6 +273,8 @@ public class AuthServiceImpl implements AuthServiceInterface {
       redisService.blacklistToken(token, remainingSeconds);
     }
     refreshTokenRepository.revokeAllByUser(user);
+    // Sign out everywhere: the access tokens of the user's other devices end too.
+    tokenRevocationService.revokeAccessTokens(user.getId());
 
     SecurityContextHolder.clearContext();
     monitoringService.recordLogout();

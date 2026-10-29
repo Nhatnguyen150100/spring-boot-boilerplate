@@ -20,6 +20,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import com.spring.app.configs.properties.AsyncProperties;
 import com.spring.app.shared.interfaces.MailServiceInterface;
+import com.spring.app.modules.auth.services.OtpAttemptService;
 import com.spring.app.shared.services.OtpEmailService;
 import com.spring.app.utils.OtpFunctionUtil;
 
@@ -71,6 +72,7 @@ class EmailExecutorContextTest {
       .withUserConfiguration(PropertiesConfig.class, AsyncConfig.class, OtpEmailService.class)
       .withBean(OtpFunctionUtil.class, () -> otpFunction)
       .withBean(MailServiceInterface.class, () -> mailService)
+      .withBean(OtpAttemptService.class, () -> mock(OtpAttemptService.class))
       .withPropertyValues(
           "application.async.email.core-size=1",
           "application.async.email.max-size=1",

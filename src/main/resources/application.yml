@@ -127,7 +127,9 @@ server:
 # =============================================================================
 application:
 
-  # Public base URL of the frontend, used for links inside outgoing e-mails.
+  # Public base URL of the frontend: the OAuth2 login redirects the browser to
+  # it (+ auth.oauth2-redirect-path) with the result in the URL fragment.
+  # Absolute http(s) URL, no query or fragment.
   frontend-url: ${FRONTEND_URL:http://localhost:3000}
 
   cors:

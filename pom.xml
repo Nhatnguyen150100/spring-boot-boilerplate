@@ -80,6 +80,15 @@
       <artifactId>h2</artifactId>
       <scope>test</scope>
     </dependency>
+    <!--
+      Opt-in integration tests only (mvn -Pintegration verify); never started by
+      `mvn test`. Version from the Testcontainers BOM that Spring Boot imports.
+    -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>mysql</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.mapstruct</groupId>
       <artifactId>mapstruct</artifactId>
@@ -239,5 +248,36 @@
       </plugin>
     </plugins>
   </build>
+
+  <!--
+    mvn -Pintegration verify
+    Runs the *IT classes (src/test/java/com/spring/app/integration) with
+    failsafe against Testcontainers MySQL + Redis; Docker required. Plain
+    `mvn test` never runs them: surefire's default includes do not match *IT.
+  -->
+  <profiles>
+    <profile>
+      <id>integration</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <argLine>-javaagent:${org.mockito:mockito-core:jar}</argLine>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

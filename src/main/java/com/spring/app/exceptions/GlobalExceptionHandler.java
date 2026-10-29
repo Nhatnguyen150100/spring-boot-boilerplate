@@ -33,6 +33,7 @@ import com.spring.app.modules.auth.exceptions.InvalidTokenException;
 
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -87,9 +88,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     return respond(HttpStatus.CONFLICT, ex.getMessage(), request, ex);
   }
 
+  /**
+   * Covers the service-level throttles too (login lockout, per-e-mail OTP
+   * sends), not only RateLimitFilter. {@code setHeader}, not a ResponseEntity
+   * header, so the filter's own Retry-After is replaced rather than duplicated.
+   */
   @ExceptionHandler(RateLimitExceededException.class)
   public ResponseEntity<BaseResponse<Void>> handleRateLimitExceeded(RateLimitExceededException ex,
-      HttpServletRequest request) {
+      HttpServletRequest request, HttpServletResponse response) {
+    response.setHeader(HttpHeaders.RETRY_AFTER, RateLimitExceededException.RETRY_AFTER_SECONDS);
     return respond(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request, ex);
   }
 

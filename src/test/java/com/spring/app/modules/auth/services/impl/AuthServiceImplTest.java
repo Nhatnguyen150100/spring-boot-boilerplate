@@ -289,6 +289,31 @@ class AuthServiceImplTest {
     verify(refreshTokenRepository).revokeAllByUser(user);
   }
 
+  @Test
+  void logoutEndsTheAccessTokensOfEveryDevice() {
+    User user = user("active@example.com", EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(user);
+    when(jwtFunction.extractTokenFromHeader(any())).thenReturn(token);
+    givenUser(user);
+
+    authService.logout(new MockHttpServletRequest());
+
+    verify(tokenRevocationService).revokeAccessTokens(user.getId());
+  }
+
+  @Test
+  void logoutNormalisesTheTokenSubjectBeforeTheLookup() {
+    // A token minted for a legacy mixed-case row still carries that casing.
+    User legacy = user("Legacy.User@Example.COM", EUserStatus.ACTIVE);
+    String token = jwtService.generateToken(legacy);
+    when(jwtFunction.extractTokenFromHeader(any())).thenReturn(token);
+    when(userRepository.findByEmail("legacy.user@example.com")).thenReturn(Optional.of(legacy));
+
+    authService.logout(new MockHttpServletRequest());
+
+    verify(refreshTokenRepository).revokeAllByUser(legacy);
+  }
+
   // ---- Task 3: status checks and enumeration -----------------------------------
 
   @Test
@@ -729,6 +754,31 @@ class AuthServiceImplTest {
     verify(rateLimitManagerService, times(3)).checkRateLimitAndThrow(eq(ERateLimitEndpoint.AUTH), anyString());
   }
 
+  /**
+   * OtpEmailService is a mock here, i.e. every send is "dropped" before the new
+   * OTP is stored. The old OTP is then still live, so its wrong-guess counter
+   * must survive: only OtpEmailService resets it, after storing the new OTP.
+   */
+  @Test
+  void aDroppedOtpSendLeavesTheWrongGuessCountersInPlace() {
+    givenUser(user("pending@example.com", EUserStatus.PENDING));
+    givenUser(user("active@example.com", EUserStatus.ACTIVE));
+    otpAttemptService.recordFailure("new@example.com", "activation");
+    otpAttemptService.recordFailure("pending@example.com", "activation");
+    otpAttemptService.recordFailure("active@example.com", "password_reset");
+
+    authService.register(registerDto("new@example.com"));
+    authService.resendOtp("pending@example.com");
+    authService.forgotPassword("active@example.com");
+
+    verify(otpEmailService).sendOtpEmailAsync("new@example.com");
+    verify(otpEmailService).sendOtpEmailAsync("pending@example.com");
+    verify(otpEmailService).sendOtpEmailAsync("active@example.com");
+    verify(otpAttemptService, never()).reset(anyString(), anyString());
+    verify(otpAttemptService, never()).resetAll(anyString());
+    assertThat(otpFailureCounters).hasSize(3);
+  }
+
   @Test
   void wrongOtpsForUnknownAndKnownEmailsAreHandledAlike() {
     givenUser(user("pending@example.com", EUserStatus.PENDING));
@@ -923,7 +973,7 @@ class AuthServiceImplTest {
 
     TokenResponseDto tokens = authService.issueTokensForOAuth2Login(" User@Example.com ");
 
-    assertThat(jwtService.isAccessToken(tokens.accessToken())).isTrue();
+    assertThat(jwtService.parseClaims(tokens.accessToken()).get("token_type", String.class)).isEqualTo("access");
     assertThat(jwtService.isRefreshToken(tokens.refreshToken())).isTrue();
     ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
     verify(refreshTokenRepository).save(saved.capture());

@@ -46,7 +46,9 @@ public class CorsConfig {
   private static final List<String> EXPOSED_HEADERS = List.of(
       "Authorization",
       "Content-Disposition",
-      "X-Frame-Options");
+      "X-Frame-Options",
+      // Sent with every 429, so a browser client knows when to retry.
+      "Retry-After");
 
   private final ApplicationProperties applicationProperties;
 

@@ -13,7 +13,7 @@ import com.spring.app.configs.properties.JwtProperties;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Ends every access token a user holds, e.g. after a password reset.
+ * Ends every access token a user holds, after a password reset or a logout.
  *
  * <p>
  * Access tokens are stateless, so revoking them means remembering a

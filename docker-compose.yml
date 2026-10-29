@@ -1,9 +1,19 @@
 # =============================================================================
-#  Local development stack.
+#  Base stack: MySQL + Redis + the app.
 #
-#  Values come from .env (see .env.example). Compose uses that same file both
-#  for ${...} interpolation here and, via env_file, for the app container - so
-#  there is exactly one place to change a value.
+#  The app runs the PROD profile here, so it needs a .env with the prod
+#  variables (see .env.example). There are deliberately NO credential defaults:
+#  MYSQL_ROOT_PASSWORD, DB_USERNAME, DB_PASSWORD and REDIS_PASSWORD abort
+#  Compose when missing, and MySQL/Redis are published on 127.0.0.1 only.
+#
+#  Local development adds the dev overlay (see docker-compose.dev.yml for the
+#  one-line command with throw-away dev credentials):
+#
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+#  (${VAR:?} is evaluated per file before the overlays merge, so an overlay
+#  cannot satisfy it; the values must come from the environment or .env.)
+#
 # =============================================================================
 
 services:
@@ -15,15 +25,15 @@ services:
     container_name: springapp-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in .env}
       MYSQL_DATABASE: ${DB_NAME:-db_test_spring}
       # The MySQL image refuses MYSQL_USER=root, so DB_USERNAME must name a
       # dedicated application user when running through Compose.
-      MYSQL_USER: ${DB_USERNAME:-springapp}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-springapp}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME must be set in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       TZ: UTC
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
     volumes:
       # db/migrations is NOT mounted into docker-entrypoint-initdb.d: Flyway
       # owns the schema, and letting MySQL replay the same files would leave
@@ -31,7 +41,7 @@ services:
       - mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootpassword}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,12 +56,19 @@ services:
     container_name: springapp-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    # An empty --requirepass makes redis-server refuse to start, so the
+    # password is mandatory: Compose aborts with this message if .env lacks it.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # A bare `redis-cli ping` exits 0 even on a NOAUTH error, so it would
+      # report healthy with a wrong password. Authenticate (REDISCLI_AUTH keeps
+      # the password off the process list) and require PONG.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -64,6 +81,9 @@ services:
   springapp:
     image: springapp:latest
     container_name: springapp-api
+    # Docker's default 10s would SIGKILL the app mid-shutdown: Spring's graceful
+    # shutdown (30s) plus the e-mail executor drain (30s) need about 60s.
+    stop_grace_period: 70s
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -75,16 +95,31 @@ services:
       - path: .env
         required: false
     environment:
-      # Only the values that MUST differ inside the Compose network.
-      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      # Explicit profile. A SPRING_PROFILES_ACTIVE=dev in .env (handy for
+      # `mvn spring-boot:run`) must not silently turn this stack into dev;
+      # use docker-compose.dev.yml for that.
+      - SPRING_PROFILES_ACTIVE=prod
+      # Values that MUST differ inside the Compose network, or must equal what
+      # the mysql/redis services above were started with.
       - DB_HOST=mysql
       - DB_PORT=3306
+      - DB_NAME=${DB_NAME:-db_test_spring}
+      - DB_USERNAME=${DB_USERNAME:?DB_USERNAME must be set in .env}
+      - DB_PASSWORD=${DB_PASSWORD:?DB_PASSWORD must be set in .env}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
+      # The redis service above speaks plain TCP.
+      - REDIS_SSL_ENABLED=false
       - UPLOAD_DIR=/app/uploads
+      # The prod profile defaults to /var/log/springapp; point it at the
+      # volume mounted below.
+      - LOG_PATH=/app/logs
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/app/logs
+      # Named volumes: they inherit the image's ownership (UID 10001), so the
+      # non-root app user can write to them. A host bind mount would be root-owned.
+      - uploads_data:/app/uploads
+      - logs_data:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
@@ -92,7 +127,8 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      # BusyBox wget ships with the Alpine JRE image; curl does not.
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -115,3 +151,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
+  uploads_data:
+    name: springapp_uploads_data
+  logs_data:
+    name: springapp_logs_data

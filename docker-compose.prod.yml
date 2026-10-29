@@ -59,14 +59,25 @@ services:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_prod_data:/data
+    # Also read by the healthcheck below.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}
     command: 
       - redis-server
       - --appendonly yes
       - --requirepass ${REDIS_PASSWORD}
       - --maxmemory 512mb
-      - --maxmemory-policy allkeys-lru
+      # noeviction, not an LRU policy: this Redis also holds security state
+      # (access-token blacklist, tokens-not-before markers, login/OTP failure
+      # counters). Evicting those would silently revive revoked tokens and
+      # reset lockouts. Cache entries all carry TTLs, so memory is reclaimed by
+      # expiry; at the limit Redis rejects writes (the app logs cache errors and
+      # falls back to the database) instead of dropping keys.
+      - --maxmemory-policy noeviction
     healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      # Authenticate and require PONG: a bare ping exits 0 even on NOAUTH.
+      # REDISCLI_AUTH keeps the password off the process list.
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -84,6 +95,9 @@ services:
   springapp:
     image: springapp:latest
     container_name: springapp-api-prod
+    # Docker's default 10s would SIGKILL the app mid-shutdown: Spring's graceful
+    # shutdown (30s) plus the e-mail executor drain (30s) need about 60s.
+    stop_grace_period: 70s
     build:
       context: .
       dockerfile: ./Dockerfile
@@ -107,8 +121,10 @@ services:
       - UPLOAD_DIR=/app/uploads
       - LOG_PATH=/var/log/springapp
     volumes:
-      - ./uploads:/app/uploads
-      - ./logs:/var/log/springapp
+      # Named volumes inherit the image's ownership (UID 10001); host bind
+      # mounts would be root-owned and unwritable for the non-root app user.
+      - uploads_prod_data:/app/uploads
+      - logs_prod_data:/var/log/springapp
     depends_on:
       mysql:
         condition: service_healthy
@@ -116,7 +132,8 @@ services:
         condition: service_healthy
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      # BusyBox wget ships with the Alpine JRE image; curl does not.
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -140,9 +157,19 @@ services:
 # ===============================
 # = Networks
 # ===============================
+# The subnet and gateway are pinned so TRUSTED_PROXIES can name them. A reverse
+# proxy on the host reaches the app through the 127.0.0.1 port binding above,
+# so Tomcat sees the bridge gateway (172.28.0.1), not the proxy, as the peer.
+# Set TRUSTED_PROXIES=172.28.0.1 in .env (and have the proxy send
+# X-Forwarded-For / X-Forwarded-Proto); otherwise every client shares the
+# gateway address for rate limiting and login lockout.
 networks:
   springapp-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+          gateway: 172.28.0.1
 
 # ===============================
 # = Volumes (Production)
@@ -152,4 +179,8 @@ volumes:
     driver: local
   redis_prod_data:
     driver: local
+  uploads_prod_data:
+    name: springapp_uploads_prod_data
+  logs_prod_data:
+    name: springapp_logs_prod_data
 
