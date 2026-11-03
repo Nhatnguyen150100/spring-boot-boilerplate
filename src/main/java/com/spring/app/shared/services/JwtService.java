@@ -63,7 +63,7 @@ public class JwtService implements JwtServiceInterface {
 
   @Override
   public boolean isRefreshToken(String token) {
-    return hasType(token, REFRESH_TOKEN_TYPE);
+    return hasType(token);
   }
 
   @Override
@@ -82,8 +82,6 @@ public class JwtService implements JwtServiceInterface {
     long now = System.currentTimeMillis();
     return Jwts.builder()
       .claims(claims)
-      // Unique per token: iat/exp have second resolution, so two tokens minted
-      // for one user in the same second would otherwise be byte-identical.
       .id(UUID.randomUUID().toString())
       .subject(user.getUsername())
       .issuedAt(new Date(now))
@@ -104,9 +102,9 @@ public class JwtService implements JwtServiceInterface {
     return extraClaims;
   }
 
-  private boolean hasType(String token, String expectedType) {
+  private boolean hasType(String token) {
     try {
-      return expectedType.equals(parseClaims(token).get(TOKEN_TYPE_CLAIM, String.class));
+      return JwtServiceInterface.REFRESH_TOKEN_TYPE.equals(parseClaims(token).get(TOKEN_TYPE_CLAIM, String.class));
     } catch (JwtException | IllegalArgumentException e) {
       return false;
     }

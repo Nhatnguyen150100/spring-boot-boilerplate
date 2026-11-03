@@ -2,6 +2,7 @@ package com.spring.app.modules.user.services.impl;
 
 import java.util.UUID;
 
+import com.spring.app.modules.user.services.CurrentUserServiceInterface;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class UserService implements UserServiceInterface {
 
+  private final CurrentUserServiceInterface currentUserService;
   private final UserRepository userRepository;
   private final AuthMapper userMapper;
   private final UpdateUserMapper updateUserMapper;
@@ -36,7 +38,8 @@ public class UserService implements UserServiceInterface {
   @Override
   @Transactional(readOnly = true)
   @Cacheable(value = CacheConfig.USER_PROFILE, key = "#userId")
-  public UserResponseDto getUserProfile(UUID userId) {
+  public UserResponseDto getCurrentUserProfile() {
+    var userId = getCurrentUserId();
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
@@ -47,7 +50,8 @@ public class UserService implements UserServiceInterface {
   @Override
   @Transactional
   @CacheEvict(value = CacheConfig.USER_PROFILE, key = "#userId")
-  public UserResponseDto updateUserProfile(UUID userId, UpdateUserDto updateUserDto) {
+  public UserResponseDto updateCurrentUserProfile(UpdateUserDto updateUserDto) {
+    var userId = getCurrentUserId();
     var user = userRepository.findById(userId)
         .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
@@ -58,5 +62,9 @@ public class UserService implements UserServiceInterface {
 
     log.info("User profile updated for userId: {}", userId);
     return userMapper.userToUserResponseDto(saved);
+  }
+  
+  private UUID getCurrentUserId() {
+    return currentUserService.getCurrentUser().getId();
   }
 }

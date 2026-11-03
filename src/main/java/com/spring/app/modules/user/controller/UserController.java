@@ -1,10 +1,6 @@
 package com.spring.app.modules.user.controller;
 
-import java.util.UUID;
-
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,7 +11,6 @@ import com.spring.app.common.response.BaseResponse;
 import com.spring.app.common.response.ResponseBuilder;
 import com.spring.app.constants.ApplicationConstants;
 import com.spring.app.modules.auth.dto.response.UserResponseDto;
-import com.spring.app.modules.auth.entities.User;
 import com.spring.app.modules.user.dto.requests.UpdateUserDto;
 import com.spring.app.modules.user.services.UserServiceInterface;
 
@@ -35,7 +30,7 @@ public class UserController {
   @GetMapping("/me")
   public ResponseEntity<BaseResponse<UserResponseDto>> getUserProfile() {
     return ResponseBuilder.success("Get user profile successfully",
-        userService.getUserProfile(currentUserId()));
+        userService.getCurrentUserProfile());
   }
 
   @Operation(summary = "Update user profile", description = "Update the profile of the authenticated user")
@@ -43,11 +38,6 @@ public class UserController {
   public ResponseEntity<BaseResponse<UserResponseDto>> updateUserProfile(
       @Valid @RequestBody UpdateUserDto updateUserDto) {
     return ResponseBuilder.success("Update user profile successfully",
-        userService.updateUserProfile(currentUserId(), updateUserDto));
-  }
-
-  private UUID currentUserId() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    return ((User) auth.getPrincipal()).getId();
+        userService.updateCurrentUserProfile(updateUserDto));
   }
 }

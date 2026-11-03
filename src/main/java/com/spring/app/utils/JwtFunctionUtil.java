@@ -81,8 +81,8 @@ public class JwtFunctionUtil {
    */
   public void authenticateAccessToken(String jwt, HttpServletRequest request) {
     Claims claims = jwtService.parseClaims(jwt);
-    if (!JwtServiceInterface.ACCESS_TOKEN_TYPE.equals(
-        claims.get(JwtServiceInterface.TOKEN_TYPE_CLAIM, String.class))) {
+    String accessTokenType = claims.get(JwtServiceInterface.ACCESS_TOKEN_TYPE,  String.class);
+    if (!JwtServiceInterface.ACCESS_TOKEN_TYPE.equals(accessTokenType)) {
       return;
     }
     try {

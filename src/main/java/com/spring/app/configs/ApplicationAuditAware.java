@@ -1,12 +1,14 @@
 package com.spring.app.configs;
 
 import java.util.Optional;
+import java.util.UUID;
 
+import com.spring.app.modules.user.services.CurrentUserServiceInterface;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.stereotype.Component;
 
@@ -35,7 +37,9 @@ import com.spring.app.modules.auth.entities.User;
  * </p>
  */
 @Component
+@RequiredArgsConstructor
 public class ApplicationAuditAware implements AuditorAware<String> {
+  private final CurrentUserServiceInterface currentUserService;
 
   private static final String SYSTEM_AUDITOR = "SYSTEM";
   private static final String OAUTH2_USER_ID_ATTRIBUTE = "id";
@@ -43,23 +47,23 @@ public class ApplicationAuditAware implements AuditorAware<String> {
   @Override
   @NonNull
   public Optional<String> getCurrentAuditor() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    Authentication authentication = currentUserService.getAuthentication();
 
     if (authentication == null
-        || !authentication.isAuthenticated()
-        || authentication instanceof AnonymousAuthenticationToken) {
+      || !authentication.isAuthenticated()
+      || authentication instanceof AnonymousAuthenticationToken) {
       return Optional.of(SYSTEM_AUDITOR);
     }
 
     Object principal = authentication.getPrincipal();
 
-    if (principal instanceof User user && user.getId() != null) {
-      return Optional.of(user.getId().toString());
+    if (principal instanceof User user) {
+      return Optional.ofNullable(user.getId()).map(UUID::toString).or(() -> Optional.of(SYSTEM_AUDITOR));
     }
 
     if (principal instanceof OAuth2AuthenticatedPrincipal oauth2Principal) {
       Object userId = oauth2Principal.getAttribute(OAUTH2_USER_ID_ATTRIBUTE);
-      if (userId != null) {
+      if (userId != null && !userId.toString().equals(SYSTEM_AUDITOR)) {
         return Optional.of(userId.toString());
       }
     }

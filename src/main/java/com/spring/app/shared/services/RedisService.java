@@ -103,12 +103,11 @@ public class RedisService implements RedisServiceInterface {
 
   @Override
   public boolean isTokenBlacklisted(String token) {
-    return Boolean.TRUE.equals(redisTemplate.hasKey(BLACKLIST_PREFIX + token));
+    return redisTemplate.hasKey(BLACKLIST_PREFIX + token);
   }
 
   @Override
   public long incrementRateLimit(String key, long windowSeconds) {
-    Long count = stringRedisTemplate.execute(INCREMENT_FIXED_WINDOW, List.of(key), String.valueOf(windowSeconds));
-    return count == null ? 0L : count;
+    return stringRedisTemplate.execute(INCREMENT_FIXED_WINDOW, List.of(key), String.valueOf(windowSeconds));
   }
 }
